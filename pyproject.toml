@@ -1,0 +1,220 @@
+# pyproject.toml — hermetic-dmsa
+# 完整 PEP 621 配置；遵循 PD1 (ruff/mypy), PD3 (类型), PD9 (三版本号), PD10 (PyPI), PD11 (License)。
+# 注意：核心运行时零 LLM 依赖；仅 dev / all extras 引入可选依赖。
+
+[build-system]
+requires = ["setuptools>=68", "setuptools_scm>=8", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hermetic-dmsa"
+description = "Hermetic Differentiated Memory Self-evolving Agent — Production-grade memory layer for LLM agents with provenance-aware DAG, textual backpropagation, semantic gradient aggregation, and tool-use AST projection."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [
+    { name = "DMSA Authors" },
+]
+keywords = [
+    "llm-agent",
+    "memory",
+    "provenance",
+    "textgrad",
+    "self-evolving",
+    "mcp",
+    "model-context-protocol",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
+]
+# 三版本号（PD9）：lib 用 SemVer（setuptools_scm 从 git tag 自动生成），storage / wire 在 dmsa.version 中独立维护。
+dynamic = ["version"]
+dependencies = [
+    # PMD skeleton（来自 analysis/pmd_skeleton 路径依赖；论文发表后改 PyPI 拉取）
+    "pmd @ file=../analysis/pmd_skeleton",
+    # 标准库已经提供 hashlib / json / dataclasses / sqlite3 / asyncio / typing / pathlib
+    # 强制零运行时 LLM 依赖（PD1 + 用户硬约束：零依赖 + 静态 backward deriver）
+]
+
+[project.optional-dependencies]
+# LLM 集成（v0.x 留接口不强制安装）
+llm = [
+    "openai>=1.0.0",
+]
+# 真实 HDBSCAN 聚类（默认走零依赖 fallback，装了这个就用 hdbscan）
+clustering = [
+    "hdbscan>=0.8.33",
+    "numpy>=1.24",
+]
+# 文档
+docs = [
+    "mkdocs>=1.5",
+    "mkdocs-material>=9.4",
+    "mkdocstrings[python]>=0.24",
+]
+# 开发工具（CI lint/type/test 一条命令拉齐）
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=4.1",
+    "ruff>=0.4",
+    "mypy>=1.10",
+    "pre-commit>=3.7",
+    "build>=1.0",
+    "pip-audit>=2.7",
+    "hypothesis>=6.100",
+]
+# 一键装齐所有可选（生产环境 CI / 论文复现用）
+all = [
+    "hermetic-dmsa[llm,clustering,docs,dev]",
+]
+
+[project.urls]
+Homepage = "https://github.com/anthropic-research/hermetic-dmsa"
+Issues = "https://github.com/anthropic-research/hermetic-dmsa/issues"
+Changelog = "https://github.com/anthropic-research/hermetic-dmsa/blob/main/CHANGELOG.md"
+Paper = "https://arxiv.org/abs/XXXX.XXXXX"
+
+[project.scripts]
+# L4 入口：MCP server CLI
+dmsa-mcp-server = "dmsa.mcp_server.cli:main"
+# Inspect CLI（只读诊断工具）
+dmsa-inspect = "dmsa.inspect.main:main"
+
+# ============================================================================
+# 工具配置（PD1）
+# ============================================================================
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools_scm]
+# 版本号从 git tag 自动生成（PD9 SemVer）
+version_scheme = "post"
+local_scheme = "no-local-version"
+write_to = "src/dmsa/_version.py"
+
+[tool.ruff]
+# PD1：严格 ruff 规则
+line-length = 100
+target-version = "py310"
+extend-exclude = ["build", "dist", ".venv"]
+
+[tool.ruff.lint]
+# 全部开启的合理子集；D/E/F/I/B/UP/SIM 是质量底线
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+    "SIM", # flake8-simplify
+    "D",   # pydocstyle
+    "C4",  # flake8-comprehensions
+    "PT",  # flake8-pytest-style
+    "RET", # flake8-return
+    "RUF", # ruff-specific
+]
+ignore = [
+    "D100", # 允许未文档化的 __init__
+    "D104", # 允许未文档化的 __init__.py 里的包
+    "D203", # 与 D211 互斥
+    "D213", # 与 D212 互斥
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["D", "S101"]  # 测试不需要 docstring，assert 允许
+"examples/*" = ["D", "E"]  # 示例代码宽松
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.mypy]
+# PD1 + PD3：strict mypy
+python_version = "3.10"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+plugins = ["pydantic.mypy"]  # pmd 用 pydantic
+mypy_path = "src"
+exclude = [
+    "build/",
+    "dist/",
+    ".venv/",
+    "tests/fixtures/",
+]
+
+[[tool.mypy.overrides]]
+module = ["pmd.*"]
+ignore_missing_imports = true  # 路径依赖的 pmd 没装 type stubs
+
+[tool.pytest.ini_options]
+# PD2：覆盖率门禁 80%
+minversion = "8.0"
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+    "--cov=dmsa",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+    "--cov-fail-under=80",
+]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.coverage.run]
+branch = true
+source = ["src/dmsa"]
+omit = [
+    "src/dmsa/_version.py",
+    "src/dmsa/mcp_server/cli.py",  # CLI 入口，由 smoke test 覆盖
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+]
+
+# ============================================================================
+# Pre-commit（PD1 / PD15）
+# ============================================================================
+
+[tool.pre-commit]
+# 在 hermetic-dmsa/ 下跑 `pre-commit install` 启用
+
+# ============================================================================
+# 依赖审计（PD17）
+# ============================================================================
+
+[tool.pip-audit]
+# CI 跑 `pip-audit` 扫描已知漏洞
+require-stamps = true
+
+# ============================================================================
+# 构建 / 分发（PD10）
+# ============================================================================
+
+[tool.cibuildwheel]
+# 多平台 wheel 矩阵：linux / macos / windows × x86_64 / arm64
+build = ["cp310-*", "cp311-*", "cp312-*"]
+skip = ["*-musllinux_*", "*-manylinux_i686"]

@@ -1,0 +1,73 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.coverage.*
+coverage.xml
+.tox/
+.nox/
+.hypothesis/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# mypy / ruff
+.mypy_cache/
+.ruff_cache/
+
+# Build artifacts
+*.whl
+*.tar.gz
+
+# Local data
+hermetic-dmsa.db
+hermetic-dmsa.db-journal
+hermetic-dmsa.db-wal
+hermetic-dmsa.db-shm
+data/
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+
+# Local configs
+.env
+.env.local
+*.toml.local
+
+# OS
+Thumbs.db
+desktop.ini
