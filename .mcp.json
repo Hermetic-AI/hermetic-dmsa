@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "hermetic-dmsa": {
+      "command": "dmsa-mcp-server",
+      "args": ["--storage", "~/.hermetic-dmsa/db.sqlite"]
+    }
+  }
+}

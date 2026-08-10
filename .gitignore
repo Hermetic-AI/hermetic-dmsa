@@ -71,3 +71,6 @@ data/
 # OS
 Thumbs.db
 desktop.ini
+
+# Research papers (tracked in research/ upstream; not part of source deliverable)
+docs/papers/*.pdf
