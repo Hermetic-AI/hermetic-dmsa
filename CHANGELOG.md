@@ -19,4 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 完整 CI/CD（ruff + mypy strict + pytest + 多平台）
 - 完整文档（README + **USAGE 用户文档含使用过程检测** + architecture + api-reference + integrations + paper-mapping）
 
+### Fixed
+- PMD skeleton `pyproject.toml` 的 `[project.optional-dependencies.dev]` 嵌套语法改为 list（解决新版 setuptools 报错 `dev must be array`）
+- hermetic-dmsa 的 setuptools_scm `version_scheme=post` 改为静态 version（兼容新版 setuptools_scm 8+）
+- PMD skeleton 路径依赖格式更新为不写 `@ file=...`，避免新版 pip 报 `Invalid URL`
+
 [Unreleased]: https://github.com/anthropic-research/hermetic-dmsa/compare/main...HEAD

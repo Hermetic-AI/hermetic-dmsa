@@ -1,8 +1,7 @@
-"""版本号文件（由 setuptools_scm 自动生成；不要手动修改）。
+"""静态版本号文件（手动管理；后续可切 setuptools_scm）。
 
-正常发布时此文件会被 setuptools_scm 覆盖。开发环境下
-若未安装 setuptools_scm 则用 fallback 值。
+发布流程：在 pyproject.toml 里 bump ``version`` 字段；CI 自动 publish。
 """
 from __future__ import annotations
 
-__version__ = "0.1.0.dev0"
+__version__ = "0.1.0"

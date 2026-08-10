@@ -24,12 +24,12 @@
 
 ```bash
 cd hermetic-dmsa
-pip install -e ../analysis/pmd_skeleton
-pip install -e ".[all]"
+pip install -e ../analysis/pmd_skeleton    # PMD skeleton（路径依赖）
+pip install -e ".[all]"                     # hermetic-dmsa 本体 + dev 依赖
 ```
 
-> 💡 `pip install -e ../analysis/pmd_skeleton` 是路径依赖（论文发表后改 PyPI 安装）。
-> 如果不需要测试和 lint，只跑核心功能：`pip install -e .`
+> 💡 **PMD skeleton 路径依赖**：论文发表后改 `pip install pmd`（PyPI）。
+> 如果你换环境（如 CI），先 `pip install -e ../analysis/pmd_skeleton` 装 PMD skeleton，再装本项目。
 
 确认 `dmsa-mcp-server` 和 `dmsa-inspect` 在 PATH 中：
 
@@ -40,6 +40,10 @@ $ which dmsa-mcp-server
 $ which dmsa-inspect
 /path/to/hermetic-dmsa/.venv/bin/dmsa-inspect
 ```
+
+> ⚠️ **已知安装问题（已修复）**：
+> - PMD skeleton 的旧 pyproject.toml 用了 `[project.optional-dependencies.dev]` 这种嵌套语法，**新 setuptools 报错**（`dev must be array`）。**已修复**（统一放进 `optional-dependencies.dev = [...]`）。
+> - hermetic-dmsa 原本用 setuptools_scm 动态版本，**新 setuptools_scm 8 不支持 `version_scheme=post`**。**已修复**（改为静态 version；后续 tag release 时再切回 scm）。
 
 ### 1.2 跑端到端 demo（无需任何 Agent）
 

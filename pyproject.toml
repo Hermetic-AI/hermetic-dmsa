@@ -3,11 +3,12 @@
 # 注意：核心运行时零 LLM 依赖；仅 dev / all extras 引入可选依赖。
 
 [build-system]
-requires = ["setuptools>=68", "setuptools_scm>=8", "wheel"]
+requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "hermetic-dmsa"
+version = "0.1.0"
 description = "Hermetic Differentiated Memory Self-evolving Agent — Production-grade memory layer for LLM agents with provenance-aware DAG, textual backpropagation, semantic gradient aggregation, and tool-use AST projection."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -36,11 +37,10 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Typing :: Typed",
 ]
-# 三版本号（PD9）：lib 用 SemVer（setuptools_scm 从 git tag 自动生成），storage / wire 在 dmsa.version 中独立维护。
-dynamic = ["version"]
+# 三版本号（PD9）：lib 用 SemVer（v0.1.0 静态；后续可切 setuptools_scm），storage / wire 在 dmsa.version 中独立维护。
 dependencies = [
     # PMD skeleton（来自 analysis/pmd_skeleton 路径依赖；论文发表后改 PyPI 拉取）
-    "pmd @ file=../analysis/pmd_skeleton",
+    "pmd",
     # 标准库已经提供 hashlib / json / dataclasses / sqlite3 / asyncio / typing / pathlib
     # 强制零运行时 LLM 依赖（PD1 + 用户硬约束：零依赖 + 静态 backward deriver）
 ]
@@ -95,12 +95,6 @@ dmsa-inspect = "dmsa.inspect.main:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-
-[tool.setuptools_scm]
-# 版本号从 git tag 自动生成（PD9 SemVer）
-version_scheme = "post"
-local_scheme = "no-local-version"
-write_to = "src/dmsa/_version.py"
 
 [tool.ruff]
 # PD1：严格 ruff 规则
