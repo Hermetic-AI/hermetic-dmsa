@@ -60,8 +60,8 @@ Files: src/dmsa/mcp_server/http/{contracts,app,cli}.py, pyproject.toml, tests/te
 - [x] Implement create_app(memory,api_key) with /health /add /search; require bearer key outside health; no key/content logging. Source messages support string and text parts. Reject incorrect types/empty IDs/options and top_k via typed 4xx.
 - [x] Add optional http extra and dmsa-memory-http CLI; production flag enforces text-embedding-v4 and a real configured client, no silent hash fallback; offline sparse profile explicit.
 - [x] Test ASGI calls, auth, errors, concurrency, scope, restarts, protocol envelopes, top_k and text parts.
-- [ ] Run example without API key; full tests coverage >=80%; targeted strict lint/mypy; final review and fix important findings.
-- [ ] Commit and push development branch, keep main baseline unchanged. Report actual functionality and scale limitations.
+- [x] Run example without API key; full tests coverage >=80%; targeted strict lint/mypy; final review and fix important findings.
+- [x] Commit and push development branch, keep main baseline unchanged. Report actual functionality and scale limitations.
 
 ## Verification command
 
@@ -72,3 +72,12 @@ uv run --no-project --with-editable ../analysis/pmd_skeleton --with pytest --wit
 ```
 
 Targeted suites use `--no-cov` to avoid global coverage rejection for one component. Final suite keeps coverage gate. No API calls needed for tests.
+
+## Final verification (2026-10-22)
+
+- Full suite: 266 passed; coverage 85.39% (80% gate).
+- Ruff passed for all changed source, tests and examples; mypy passed for all 30 changed source files. No changed Python file exceeds 300 lines.
+- Offline Coding Memory and RSI examples both completed without API calls.
+- Final review approved through f74510e; all six important findings resolved.
+- Baseline main and annotated freeze tag remain at caeeb2f; development is delivered on feat/coding-memory-rsi.
+- Limits: no official leaderboard score or 1.8B-token validation; dense scan remains bounded; PMD is a workspace sibling dependency; durable SQLite snapshot rollback is explicitly refused. RSI evolves retrieval policies offline, not code or model weights.
