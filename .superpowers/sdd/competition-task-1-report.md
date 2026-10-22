@@ -146,3 +146,22 @@ docker compose -p dmsa-task1-acceptance exec -T memory dmsa-memory-smoke --reque
    构建成功。运行依赖有 hash 锁，隔离构建工具本身未做完整供应链锁定。
 5. 默认服务 key 只面向 loopback 的本机 sparse 验证；生产需要替换密钥并设置合适
    的 TLS/调用方边界，相关步骤已文档化。没有改变服务级 key 与 user_id 的原有信任模型。
+
+## 独立审查修复
+
+独立审查发现 smoke CLI 对 `http.client.HTTPException` 的子类处理不完整，坏端口和
+畸形状态行可产生 traceback 或暴露上游响应文本。将 Request 构造移入异常边界，并
+把协议异常统一映射为固定消息的 `TransportError`。新增
+`tests/test_smoke_errors.py` 覆盖坏端口、非法端口、畸形状态行、`BadStatusLine`、
+`InvalidURL`、`IncompleteRead` 和 Request 构造错误；CLI 输出断言无 traceback、无上游
+内容。修复后覆盖测试通过。
+
+审查还发现 pip-audit 没覆盖部署锁文件。CI 现在审计 `deploy/requirements.lock` 中
+所有公开运行依赖；只剔除本地 vendored 的 `pmd==0.1.0` 项，因为 PyPI 漏洞服务无法
+解析项目附带的哈希固定源码发行包。PMD 的全部传递运行依赖仍在同一锁文件中，源码包
+则由 SHA-256 校验。`tests/test_distribution.py` 检查这段 CI 合约。
+
+修复验证：`pytest tests/test_smoke_errors.py tests/test_deployment.py tests/test_distribution.py
+-q --no-cov` 为 33 passed；涉及文件 Ruff 与格式检查通过；smoke 模块 strict mypy
+通过。`pip-audit` 使用未过滤锁文件时确实因本地 PMD 不在 PyPI 失败；CI 已按上述
+方式过滤其唯一本地项目项。复审后全量审计结果与网络服务可用性需由 CI 输出确认。

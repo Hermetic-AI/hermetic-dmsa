@@ -51,6 +51,7 @@ flowchart LR
 | 参数 | 默认值 | 含义 |
 |---|---:|---|
 | 三通道权重 | 各 1.0 | 无 embedder 时不运行 dense |
+| `experience_weight` | 1.0 | 可追溯经验卡适用性排序先验；0 可作为关闭该先验的对照 |
 | `candidate_limit` | 80 | 各通道候选上限 |
 | `neighbor_window` | 1 | 邻近片段窗口 |
 | `per_session_limit` | 4 | 单会话返回片段限额 |

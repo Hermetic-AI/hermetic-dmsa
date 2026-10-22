@@ -57,7 +57,7 @@ PMD 从仓库随附的固定 Apache-2.0 源码发行包安装，参见[分发说
 ## CodingMemory
 
 `from dmsa.memory import CodingMemory, SourceMessage, SearchPolicy` 提供独立于 DAG 的
-scope coding evidence API。`CodingMemory(path, embedder=None, policy=None)` 接受 SQLite
+scope coding evidence API。`CodingMemory(path, embedder=None, policy=None, vector_index=None)` 接受 SQLite
 路径；`add(request_id, user_id, session_id, messages)` 幂等保存有序 `SourceMessage`
 并返回 scope revision；冲突抛出 `CodingMemoryConflictError`。`search(query, user_id,
 top_k, policy=None)` 返回含稳定切片 ID、来源引用文本和 RRF 分数的 `SearchHit`。临时
@@ -66,10 +66,15 @@ policy 可用于配对检索，不会修改实例默认策略。`delete_scope(us
 `corpus_fingerprint(user_ids)` 为其指纹快捷方式，`close()` 关闭连接。
 校验错误抛出 `CodingMemoryValidationError`。可选 embedder 要求 fingerprint/name、dimension
 和 `embed_batch(texts)`；向量与 fingerprint 一起持久化，scope 超出 policy 的
-`dense_scan_limit` 时 dense 检索拒绝运行。细节与适用边界见 `docs/algorithms/coding-memory.md`。
+`dense_scan_limit` 时默认 SQLite dense 检索拒绝运行。可选 `VectorIndex` 实现通过
+scope/fingerprint 过滤召回向量候选；`QdrantVectorIndex(url, timeout=5, api_key=None)` 需
+安装 `hermetic-dmsa[vector]`。Qdrant 候选经 SQLite 再次验证 scope。细节与适用边界见
+`docs/algorithms/coding-memory.md`。
 `max_chars` 按 Python 字符长度计量，`max_tokens` 使用公开的
 `dmsa.memory.estimate_tokens` 确定性 UTF-8 字节预算代理，并非模型 tokenizer。SQLite 使用带 scope
 约束的索引与 FTS 结构；存储初始化会执行幂等 schema migration，旧数据库可直接打开。
+`SearchPolicy.experience_weight`（默认 `1.0`，范围 `[0, 10]`）调节可追溯经验卡的轻量
+适用性先验；设为 `0` 可在配对回放中禁用该 rerank，而不改变来源记录或召回通道。
 
 ## Offline RSI
 

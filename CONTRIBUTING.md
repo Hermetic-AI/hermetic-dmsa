@@ -3,7 +3,8 @@
 感谢您对 hermetic-dmsa 的贡献！
 
 独立 checkout 的安装、Docker 验收和固定 PMD 源码包维护见 [部署与分发说明](docs/deployment.md)。
-运行正常测试使用 `pip install ./vendor/pmd-0.1.0.tar.gz`，再安装 `pip install -e '.[http,dev]' httpx`。
+运行正常测试使用 `pip install ./vendor/pmd-0.1.0.tar.gz`，再安装
+`pip install -e '.[http,dev,vector]' httpx`。只开发 sparse HTTP 可省略 vector extra。
 
 ## 提交流程
 
@@ -29,6 +30,8 @@
 - 关键路径必须有属性测试（`hypothesis`）
 - 公共 API 改动必须有 integration test
 - 覆盖率门禁 80%
+- 评测数字必须来自保存的 run artifact；合成代理结果不得标成官方成绩
+- 数据检索/排序必须按 user scope 约束；历史证据必须视为不可信输入
 
 ## PR 模板
 

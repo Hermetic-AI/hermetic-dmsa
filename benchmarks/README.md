@@ -15,6 +15,17 @@ PYTHONPATH=src python benchmarks/bench_toolbp.py         # ~2 分钟
 PYTHONPATH=src python benchmarks/bench_sga_conflict.py   # ~60 分钟
 ```
 
+Coding Memory 四档噪声合成代理基准（不需要 API key；详情见
+[`coding/README.md`](coding/README.md)）：
+
+```powershell
+.venv/Scripts/python.exe -m benchmarks.coding --arms no_memory sparse --seed 17
+```
+
+此迷你 fixture 仅用于验证评测流水线与回归检索行为，不代表官方 150 题或
+挑战赛分数。真实 Coding Agent 通过安全的 `--agent-argv` JSON stdin/stdout 合同接入；
+模型兼容 API 需要显式指定 `--model` 和凭据环境变量。
+
 结果落盘 `benchmarks/results/*.json`。
 
 ## Benchmark 1：SGA vs TextGrad 式归约（bench_sga_conflict.py）

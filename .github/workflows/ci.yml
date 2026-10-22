@@ -20,9 +20,9 @@ jobs:
       - name: Install dev deps
         run: pip install -e ".[http,dev,vector]" httpx
       - name: ruff check
-        run: ruff check src tests
+        run: ruff check src tests benchmarks/coding
       - name: ruff format check
-        run: ruff format --check src tests
+        run: ruff format --check src tests benchmarks/coding
 
   type:
     name: Type Check (mypy --strict)
@@ -38,6 +38,8 @@ jobs:
         run: pip install -e ".[http,dev,vector]" httpx
       - name: mypy
         run: mypy src/dmsa --strict
+      - name: mypy coding benchmark
+        run: mypy benchmarks/coding --strict
 
   test:
     name: Test (${{ matrix.os }} / py${{ matrix.python }})

@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "dataset": "dmsa-coding-memory-mini-synthetic",
+  "license": "CC0-1.0",
+  "noise_counts": {"low": 1, "medium_low": 3, "medium_high": 6, "high": 10},
+  "tasks": [
+    {
+      "id": "bug-cache-race-001",
+      "kind": "bug",
+      "query": "cache refresh race stale load_cache src/cache.py",
+      "target_path": "src/cache.py",
+      "evidence": "[task=bug-cache-race-001] src/cache.py load_cache race condition: read version before lock then stale cache replaces newer value. Root cause: version check outside lock. Fix: compare version under lock before replacement. Failed attempt: increasing TTL does not fix race. Validation: pytest tests/test_cache.py passed.",
+      "distractors": [
+        {"kind": "lexical_lookalike", "text": "src/cache.py load_cache race condition: stale cache in async adapter. Root cause: missing await. Fix: await refresh task. Validation: test_async_cache passed."},
+        {"kind": "failed_attempt", "text": "src/cache.py load_cache tried increasing TTL; race remained and stale values still replaced fresh cache."},
+        {"kind": "stale_version", "text": "Old src/cache.py cache used global mutable dict; current implementation migrated to per-tenant CacheStore."},
+        {"kind": "opposite_condition", "text": "src/cache.py when refresh is disabled, preserve stale cache by design; do not replace until manual invalidation."},
+        {"kind": "irrelevant", "text": "docs/deploy.md update Docker image labels and release notes."},
+        {"kind": "lexical_lookalike", "text": "src/cache.py load_cache race fixed by redis distributed lock; applies only to multi-process backend."},
+        {"kind": "failed_attempt", "text": "src/cache.py adding sleep(1) appeared to help but flaky race reproduced under load."},
+        {"kind": "irrelevant", "text": "src/ui/theme.css add a dark mode toggle and adjust contrast."},
+        {"kind": "stale_version", "text": "Cache v1 supports pickle serialization; current v3 stores JSON envelopes."},
+        {"kind": "opposite_condition", "text": "For immutable cache entries, bypass version revalidation to avoid unnecessary lock contention."},
+        {"kind": "irrelevant", "text": "README wording should use sentence case for headings."},
+        {"kind": "failed_attempt", "text": "Removing the lock in load_cache caused concurrent writers to overwrite newer values."}
+      ]
+    },
+    {
+      "id": "feature-parser-timeout-002",
+      "kind": "feature",
+      "query": "add per request timeout parser client API feature",
+      "target_path": "src/client.py",
+      "evidence": "[task=feature-parser-timeout-002] Add configurable per-request timeout in src/client.py. Condition: retain current default when timeout is omitted. Change: validate positive timeout and pass it to transport request. Validation: unit tests cover default, override, and zero rejection.",
+      "distractors": [
+        {"kind": "lexical_lookalike", "text": "src/client.py timeout is a retry delay in milliseconds; transport timeout remains globally configured."},
+        {"kind": "failed_attempt", "text": "src/client.py accepted timeout=0 and caused immediate failures; reject non-positive values."},
+        {"kind": "stale_version", "text": "Previous client API had timeout_ms; current API uses timeout seconds."},
+        {"kind": "opposite_condition", "text": "When timeout omitted, use no timeout for long-lived streaming requests."},
+        {"kind": "irrelevant", "text": "src/cache.py fix stale cache race under lock."},
+        {"kind": "lexical_lookalike", "text": "src/client.py add global timeout constant only; caller cannot override per request."},
+        {"kind": "failed_attempt", "text": "Passing timeout as a string reached the HTTP transport and raised late TypeError."},
+        {"kind": "irrelevant", "text": "Update docs about release packaging and wheels."},
+        {"kind": "stale_version", "text": "Old transport accepted timeout=None; current policy requires finite positive seconds."},
+        {"kind": "opposite_condition", "text": "For background polling, ignore request timeouts and keep waiting indefinitely."},
+        {"kind": "irrelevant", "text": "Rename a CSS class in the settings page."},
+        {"kind": "failed_attempt", "text": "Using a global mutable timeout leaked one request setting into other users."}
+      ]
+    }
+  ]
+}
