@@ -53,13 +53,22 @@ def _markdown(report: dict[str, Any]) -> str:
         f"| {key} | {value if value is not None else 'not measured'} |"
         for key, value in metrics.items()
     )
-    lines.extend(["", "## By noise level", ""])
-    for level, rows in report["noise_levels"].items():
-        recall = sum(row["evidence_recall"] for row in rows) / len(rows) if rows else 0.0
-        misleading = sum(row["misleading_memory"] for row in rows) / len(rows) if rows else 0.0
-        lines.append(
-            f"- `{level}`: evidence recall={recall:.3f}, misleading-memory={misleading:.3f}"
-        )
+    lines.extend(
+        [
+            "",
+            "## By arm and noise level",
+            "",
+            "| Arm | Noise | Tasks | Recall | NDCG | Misleading |",
+            "|---|---|---:|---:|---:|---:|",
+        ]
+    )
+    for arm, levels in report["metrics_by_arm_and_noise"].items():
+        for level, values in levels.items():
+            lines.append(
+                f"| {arm} | {level} | {values['task_count']} | "
+                f"{values['evidence_recall']:.3f} | {values['ndcg']:.3f} | "
+                f"{values['misleading_memory_rate']:.3f} |"
+            )
     return "\n".join(lines) + "\n"
 
 

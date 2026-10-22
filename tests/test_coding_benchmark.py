@@ -18,6 +18,7 @@ from benchmarks.coding.adapters import (  # noqa: E402
     run_command_agent,
     run_openai_compatible_agent,
 )
+from benchmarks.coding.cli import _markdown  # noqa: E402
 from benchmarks.coding.dataset import load_manifest, ndcg  # noqa: E402
 from benchmarks.coding.evaluator import evaluate_fixture  # noqa: E402
 
@@ -42,6 +43,9 @@ def test_fixture_evaluation_emits_proxy_only_and_four_noise_levels(tmp_path: Pat
     assert report["run_metadata"]["seed"] == 7
     assert report["metrics"]["agent_reported_resolved_rate"] is None
     assert report["metrics"]["evidence_recall"] is not None
+    markdown = _markdown(report)
+    assert "| no_memory | low |" in markdown
+    assert "| sparse | high |" in markdown
     assert report == resumed
     json.dumps(report)
 
