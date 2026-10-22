@@ -12,6 +12,7 @@ from dmsa.memory.coding.models import (
     SearchPolicy,
     SourceMessage,
 )
+from dmsa.memory.coding.vector_index import QdrantVectorIndex, VectorIndex
 
 __all__ = [
     "CodingMemory",
@@ -20,8 +21,10 @@ __all__ = [
     "CodingMemoryValidationError",
     "CorpusState",
     "DenseScopeTooLargeError",
+    "QdrantVectorIndex",
     "SearchHit",
     "SearchPolicy",
     "SourceMessage",
+    "VectorIndex",
     "estimate_tokens",
 ]

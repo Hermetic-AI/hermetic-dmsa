@@ -6,7 +6,7 @@ import hashlib
 import json
 import sqlite3
 import threading
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 
 from dmsa.memory.coding.extraction import Chunk
@@ -78,6 +78,7 @@ class CodingStore:
         chunks: Iterable[Chunk],
         vectors: list[tuple[float, ...]],
         fingerprint: str | None,
+        before_publish: Callable[[], None] | None = None,
     ) -> int:
         """事务性发布 request、原文、切片、向量和 revision."""
         digest = self.payload_hash(session_id, messages)
@@ -86,6 +87,8 @@ class CodingStore:
             old = self.existing_request(request_id, user_id, digest)
             if old is not None:
                 return old
+            if before_publish is not None:
+                before_publish()
             row = self.db.execute(
                 "SELECT revision FROM corpus WHERE user_id=?", (user_id,)
             ).fetchone()
@@ -136,9 +139,7 @@ class CodingStore:
                     ),
                 )
                 for term in {value.lower() for value in (*chunk.paths, *chunk.symbols)}:
-                    self.db.execute(
-                        "INSERT INTO exact_terms VALUES(?,?,?)", (user_id, cid, term)
-                    )
+                    self.db.execute("INSERT INTO exact_terms VALUES(?,?,?)", (user_id, cid, term))
                 if fingerprint is not None:
                     vector = vectors[chunk_index]
                     self.db.execute(
@@ -156,8 +157,7 @@ class CodingStore:
                 (user_id, revision),
             )
             self.db.execute(
-                "UPDATE metadata SET value=CAST(value AS INTEGER)+1 "
-                "WHERE key='corpus_generation'"
+                "UPDATE metadata SET value=CAST(value AS INTEGER)+1 WHERE key='corpus_generation'"
             )
             return revision
 
@@ -255,9 +255,9 @@ class CodingStore:
             self.db.execute("BEGIN")
             try:
                 corpus_id = str(
-                    self.db.execute(
-                        "SELECT value FROM metadata WHERE key='corpus_id'"
-                    ).fetchone()[0]
+                    self.db.execute("SELECT value FROM metadata WHERE key='corpus_id'").fetchone()[
+                        0
+                    ]
                 )
                 generation = int(
                     self.db.execute(
@@ -292,8 +292,7 @@ class CodingStore:
                 (user_id, epoch),
             )
             self.db.execute(
-                "UPDATE metadata SET value=CAST(value AS INTEGER)+1 "
-                "WHERE key='corpus_generation'"
+                "UPDATE metadata SET value=CAST(value AS INTEGER)+1 WHERE key='corpus_generation'"
             )
 
     def close(self) -> None:

@@ -19,9 +19,11 @@ from dmsa.memory.coding import (
     CodingMemoryValidationError,
     CorpusState,
     DenseScopeTooLargeError,
+    QdrantVectorIndex,
     SearchHit,
     SearchPolicy,
     SourceMessage,
+    VectorIndex,
     estimate_tokens,
 )
 from dmsa.memory.layer import MemoryLayer
@@ -43,9 +45,11 @@ __all__ = [
     "LineageQuery",
     "MemoryLayer",
     "PromptContext",
+    "QdrantVectorIndex",
     "SearchHit",
     "SearchPolicy",
     "SourceMessage",
+    "VectorIndex",
     "create_prompt_context",
     "estimate_tokens",
     "from_dict",

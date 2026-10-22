@@ -18,7 +18,7 @@ jobs:
       - name: Install PMD skeleton
         run: pip install ./vendor/pmd-0.1.0.tar.gz
       - name: Install dev deps
-        run: pip install -e ".[http,dev]" httpx
+        run: pip install -e ".[http,dev,vector]" httpx
       - name: ruff check
         run: ruff check src tests
       - name: ruff format check
@@ -35,7 +35,7 @@ jobs:
       - name: Install PMD skeleton
         run: pip install ./vendor/pmd-0.1.0.tar.gz
       - name: Install dev deps
-        run: pip install -e ".[http,dev]" httpx
+        run: pip install -e ".[http,dev,vector]" httpx
       - name: mypy
         run: mypy src/dmsa --strict
 
@@ -55,7 +55,7 @@ jobs:
       - name: Install PMD skeleton
         run: pip install ./vendor/pmd-0.1.0.tar.gz
       - name: Install dev deps
-        run: pip install -e ".[http,dev]" httpx
+        run: pip install -e ".[http,dev,vector]" httpx
       - name: pytest
         run: pytest tests/ -v
 
@@ -71,7 +71,7 @@ jobs:
       - name: Install PMD skeleton
         run: pip install ./vendor/pmd-0.1.0.tar.gz
       - name: Install dev deps
-        run: pip install -e ".[http,dev]" httpx
+        run: pip install -e ".[http,dev,vector]" httpx
       - name: pytest with coverage
         run: pytest --cov=dmsa --cov-fail-under=80
 

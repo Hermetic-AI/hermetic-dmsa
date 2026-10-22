@@ -4,11 +4,13 @@
 from __future__ import annotations
 
 import argparse
+import os
 
 from dmsa.errors import ConfigError
 from dmsa.mcp_server.http.app import create_app
 from dmsa.mcp_server.http.runtime import load_settings
 from dmsa.memory import CodingMemory
+from dmsa.memory.coding.vector_index import QdrantVectorIndex
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -39,7 +41,12 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit("install hermetic-dmsa[http] to use competition profile") from exc
         from dmsa.mcp_server.http.embedding import TextEmbeddingV4
 
-        client = openai.OpenAI(api_key=settings.embedding_key, base_url=settings.endpoint)
+        client = openai.OpenAI(
+            api_key=settings.embedding_key,
+            base_url=settings.endpoint,
+            timeout=60,
+            max_retries=2,
+        )
         embedder = TextEmbeddingV4(client, settings.dimension)
     else:
         embedder = None
@@ -48,8 +55,20 @@ def main(argv: list[str] | None = None) -> int:
     except ImportError as exc:
         raise SystemExit("install hermetic-dmsa[http] to run HTTP server") from exc
     memory: CodingMemory | None = None
+    vector_index = None
     try:
-        memory = CodingMemory(args.storage, embedder=embedder)
+        vector_url = os.environ.get("DMSA_VECTOR_URL", "").strip()
+        if vector_url:
+            if args.profile != "competition":
+                raise SystemExit("DMSA_VECTOR_URL is only supported with competition profile")
+            try:
+                vector_index = QdrantVectorIndex(
+                    vector_url,
+                    api_key=os.environ.get("DMSA_QDRANT_API_KEY") or None,
+                )
+            except Exception as exc:
+                raise SystemExit("cannot initialize configured Qdrant vector index") from exc
+        memory = CodingMemory(args.storage, embedder=embedder, vector_index=vector_index)
         uvicorn.run(
             create_app(memory, settings.api_key),
             host=args.host,

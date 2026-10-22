@@ -82,6 +82,9 @@ http = [
     "uvicorn>=0.27",
     "openai>=1.0.0",
 ]
+vector = [
+    "qdrant-client>=1.10.0,<2.0.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/Hermetic-AI/hermetic-dmsa"
@@ -165,6 +168,10 @@ exclude = [
 [[tool.mypy.overrides]]
 module = ["pmd.*"]
 ignore_missing_imports = true  # 路径依赖的 pmd 没装 type stubs
+
+[[tool.mypy.overrides]]
+module = ["qdrant_client.*"]
+ignore_missing_imports = true  # vector extra 是可选依赖
 
 [tool.pytest.ini_options]
 # PD2：覆盖率门禁 80%

@@ -8,6 +8,8 @@ import sqlite3
 from collections import defaultdict
 
 from dmsa.memory.coding.budget import estimate_tokens
+from dmsa.memory.coding.experiences import applicability_adjustment, extract_experience_card
+from dmsa.memory.coding.extraction import Chunk
 from dmsa.memory.coding.models import (
     CodingMemoryError,
     CodingMemoryValidationError,
@@ -17,6 +19,7 @@ from dmsa.memory.coding.models import (
     SearchPolicy,
 )
 from dmsa.memory.coding.storage import CodingStore
+from dmsa.memory.coding.vector_index import VectorIndex
 
 
 def _cosine(left: tuple[float, ...], right: tuple[float, ...]) -> float:
@@ -33,10 +36,13 @@ def _tokens(text: str) -> set[str]:
 class CodingRetriever:
     """基于稳定 RRF 和确定性证据预算的检索器."""
 
-    def __init__(self, store: CodingStore, embedder: Embedder | None) -> None:
+    def __init__(
+        self, store: CodingStore, embedder: Embedder | None, vector_index: VectorIndex | None = None
+    ) -> None:
         """初始化可选 dense 嵌入器."""
         self.store = store
         self.embedder = embedder
+        self.vector_index = vector_index
         self.fingerprint = self._fingerprint(embedder) if embedder else None
 
     @staticmethod
@@ -156,20 +162,51 @@ class CodingRetriever:
         self._add_channel(ranks, policy.exact_weight, exact)
         self._add_channel(ranks, policy.sparse_weight, sparse)
         if self.embedder is not None and policy.dense_weight:
-            count, candidates = self.store.dense_candidates(
-                user_id, self.fingerprint or "", policy.dense_scan_limit
-            )
-            if count > policy.dense_scan_limit:
-                raise DenseScopeTooLargeError(
-                    f"dense scan has {count} chunks; limit is {policy.dense_scan_limit}"
-                )
             query_vector = self.embed_new([query])[0]
-            if any(len(vector) != len(query_vector) for _, vector in candidates):
-                raise CodingMemoryValidationError("stored vector dimension differs from embedder")
-            scored = [(_cosine(query_vector, vector), row) for row, vector in candidates]
-            scored.sort(key=lambda item: (-item[0], str(item[1]["id"])))
-            self._add_channel(
-                ranks, policy.dense_weight, [row for _, row in scored[: policy.candidate_limit]]
+            if self.vector_index is not None:
+                try:
+                    candidate_ids = self.vector_index.search(
+                        user_id, self.fingerprint or "", query_vector, policy.candidate_limit
+                    )
+                except Exception as exc:
+                    raise CodingMemoryError("vector index search failed") from exc
+                indexed_rows = self.store.rows_by_ids(user_id, tuple(candidate_ids))
+                by_id = {str(row["id"]): row for row in indexed_rows}
+                dense_rows = [by_id[point_id] for point_id in candidate_ids if point_id in by_id]
+                self._add_channel(ranks, policy.dense_weight, dense_rows)
+            else:
+                count, dense_candidates = self.store.dense_candidates(
+                    user_id, self.fingerprint or "", policy.dense_scan_limit
+                )
+                if count > policy.dense_scan_limit:
+                    raise DenseScopeTooLargeError(
+                        f"dense scan has {count} chunks; limit is {policy.dense_scan_limit}"
+                    )
+                if any(len(vector) != len(query_vector) for _, vector in dense_candidates):
+                    raise CodingMemoryValidationError(
+                        "stored vector dimension differs from embedder"
+                    )
+                scored = [(_cosine(query_vector, vector), row) for row, vector in dense_candidates]
+                scored.sort(key=lambda item: (-item[0], str(item[1]["id"])))
+                self._add_channel(
+                    ranks, policy.dense_weight, [row for _, row in scored[: policy.candidate_limit]]
+                )
+        card_rows = self.store.rows_by_ids(user_id, tuple(ranks))
+        for row in card_rows:
+            text = str(row["text"])
+            card = extract_experience_card(
+                Chunk(
+                    int(row["message_index"]),
+                    int(row["start"]),
+                    int(row["end"]),
+                    text,
+                    tuple(str(row["paths"]).split()),
+                    tuple(str(row["symbols"]).split()),
+                    str(row["outcome"]),
+                )
+            )
+            ranks[str(row["id"])] += policy.experience_weight * applicability_adjustment(
+                query, card
             )
         ordered = sorted(ranks, key=lambda key: (-ranks[key], key))
         return self._pack(user_id, ordered, ranks, top_k, policy)

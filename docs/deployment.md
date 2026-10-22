@@ -1,5 +1,8 @@
 # 独立部署与开源分发
 
+安全边界和数据保留见 [security and data](security-and-data.md)。比赛运行流程见
+[competition runbook](competition-runbook.md)；合成 fixture 不代表官方成绩。
+
 从本仓库 checkout 即可构建，不需要研究工作区或 sibling checkout。
 需要 Docker Engine + Compose v2，或者 Python 3.10+ 与支持 FTS5 的 SQLite。
 本文命令在仓库根目录执行。
@@ -67,6 +70,10 @@ docker compose exec -T memory dmsa-memory-smoke
 Competition 使用独立 `competition-data` 卷，避免与 sparse 语料混用；运行时
 供应商错误不会降级为哈希向量。健康检查不验证 key 是否被供应商接受；完整 smoke
 会真实调用 embedding，可能产生费用。未声称官方端点兼容性或比赛成绩。
+Competition overlay 也启动只处于 Compose 内部网络的 Qdrant，持久卷为
+`qdrant-data`，不发布 Qdrant host port。`DMSA_QDRANT_API_KEY` 可配置受保护的外部
+Qdrant。Embedding 请求使用 60 秒超时与最多两次 SDK 重试；Qdrant 幂等写入/检索/删除
+采用有界指数退避。外部故障会显式失败，不降级为 sparse。
 
 正式部署可使用 Compose secrets。创建 Git 忽略的 `secrets/memory_api_key` 和
 `secrets/embedding_api_key` 两个 UTF-8 文件，各放一个真实 key，再启动：
@@ -105,7 +112,7 @@ python -m pip install -e '.[http,dev]' httpx
 更新依赖锁：
 
 ```bash
-uv pip compile pyproject.toml --extra http --python-version 3.12 --universal --generate-hashes --find-links vendor --output-file deploy/requirements.lock
+uv pip compile pyproject.toml --extra http --extra vector --python-version 3.12 --universal --generate-hashes --find-links vendor --output-file deploy/requirements.lock
 ```
 
 ## 验证命令

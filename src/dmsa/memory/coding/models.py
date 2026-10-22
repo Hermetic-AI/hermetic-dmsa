@@ -66,6 +66,7 @@ class SearchPolicy:
     exact_weight: float = 1.0
     sparse_weight: float = 1.0
     dense_weight: float = 1.0
+    experience_weight: float = 1.0
     candidate_limit: int = 80
     neighbor_window: int = 1
     max_chars: int = 12000
@@ -76,14 +77,16 @@ class SearchPolicy:
 
     def __post_init__(self) -> None:
         """拒绝非有限权重、布尔整数和无界策略值."""
-        weights = (self.exact_weight, self.sparse_weight, self.dense_weight)
+        weights = (self.exact_weight, self.sparse_weight, self.dense_weight, self.experience_weight)
         for value in (*weights, self.redundancy_threshold):
             if isinstance(value, bool) or not isinstance(value, (float, int)):
                 raise CodingMemoryValidationError("policy weights must be finite numbers")
             if not math.isfinite(value):
                 raise CodingMemoryValidationError("policy weights must be finite numbers")
-        if any(not 0 <= value <= 10 for value in weights) or sum(weights) == 0:
-            raise CodingMemoryValidationError("weights must be in [0, 10] and not all zero")
+        if any(not 0 <= value <= 10 for value in weights[:3]) or sum(weights[:3]) == 0:
+            raise CodingMemoryValidationError("channel weights must be in [0, 10] and not all zero")
+        if not 0 <= self.experience_weight <= 10:
+            raise CodingMemoryValidationError("experience_weight must be in [0, 10]")
         bounds = (
             (self.candidate_limit, 1, 1000),
             (self.neighbor_window, 0, 10),

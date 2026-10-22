@@ -18,7 +18,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 RUN groupadd --gid 10001 dmsa && useradd --uid 10001 --gid 10001 --no-create-home dmsa \
     && mkdir /data /app && chown 10001:10001 /data /app
 COPY --from=builder /wheels /wheels
-RUN pip install --no-cache-dir --no-index --find-links=/wheels 'hermetic-dmsa[http]' \
+RUN pip install --no-cache-dir --no-index --find-links=/wheels 'hermetic-dmsa[http,vector]' \
     && rm -r /wheels
 COPY LICENSE NOTICE THIRD_PARTY_LICENSES.md /usr/share/licenses/hermetic-dmsa/
 COPY vendor/README.md /usr/share/licenses/hermetic-dmsa/PMD-SOURCE.md

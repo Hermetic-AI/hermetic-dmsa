@@ -22,10 +22,15 @@ scope 编码为独立全文词项，与查询联合匹配后才应用候选上�
 不是完整的 episode/card 检索架构，必须由四档噪声代理集和实际 Coding Agent 对照实验验证。
 
 可选 embedder 通过 `embed_batch` 注入，必须提供稳定 fingerprint/name 与 dimension；
-所有向量必须数量、维度正确、有限且非零。当前 dense 实现为进程内、scope 内精确扫描
-参考实现，最多接受 policy 中 `dense_scan_limit` 个 chunk；超过时显式报错。向量持久保存在
-SQLite 中并绑定 fingerprint 与 dimension，不同 embedder 不会误读旧向量。这不是面向大规模
-语料的 ANN 后端。
+所有向量必须数量、维度正确、有限且非零。默认 dense 实现为进程内、scope 内精确扫描
+参考实现，最多接受 policy 中 `dense_scan_limit` 个 chunk；超过时显式报错。可选 Qdrant
+ANN 后端按 fingerprint/维度分 collection，并在 ANN 查询前以原生 payload filter 限定
+`user_id` 与 fingerprint。召回 ID 再经 SQLite 同 scope 读取校验，因此过期/孤儿点不会暴露
+来源。SQLite 仍是事实来源；Qdrant 不可用时返回 typed error，不会静默回退。写入先幂等
+upsert Qdrant，再提交 SQLite；失败写入可能留孤儿向量，但孤儿不会通过 SQL 校验，重试会覆盖
+相同稳定 point ID。删除先删 SQLite，再清除远端所有 DMSA collections 的 scope 点；若远端
+失败，SQL 已不可见数据，仍需重试删除以满足物理清理。SQLite 向量副本保留为离线精确参考与
+恢复依据。
 
 `corpus_state(user_ids)` 在单个 SQLite 只读事务中读取排序后的 scope epoch，并返回
 `CorpusState(revision, fingerprint)`。epoch 在删除后继续单调递增，避免清空再写入产生 ABA

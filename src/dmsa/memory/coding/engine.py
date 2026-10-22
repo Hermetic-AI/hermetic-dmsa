@@ -1,3 +1,4 @@
+# ruff: noqa: D415, RUF002
 """CodingMemory 稳定公开门面。."""
 
 from __future__ import annotations
@@ -21,13 +22,18 @@ from dmsa.memory.coding.models import (
 )
 from dmsa.memory.coding.retrieval import CodingRetriever
 from dmsa.memory.coding.storage import CodingStore
+from dmsa.memory.coding.vector_index import VectorIndex
 
 
 class CodingMemory:
     """提供 scope 隔离、耐久写入与来源可追溯检索。."""
 
     def __init__(
-        self, path: str | Path, embedder: Embedder | None = None, policy: SearchPolicy | None = None
+        self,
+        path: str | Path,
+        embedder: Embedder | None = None,
+        policy: SearchPolicy | None = None,
+        vector_index: VectorIndex | None = None,
     ) -> None:
         """打开数据库并绑定可选检索策略和嵌入器。."""
         try:
@@ -35,7 +41,10 @@ class CodingMemory:
         except (sqlite3.Error, OSError, ValueError, TypeError) as exc:
             raise CodingMemoryError("cannot initialize coding memory storage") from exc
         try:
-            self.retriever = CodingRetriever(self.store, embedder)
+            if vector_index is not None and embedder is None:
+                raise CodingMemoryValidationError("vector_index requires an embedder")
+            self.vector_index = vector_index
+            self.retriever = CodingRetriever(self.store, embedder, vector_index)
             self.policy = policy or SearchPolicy()
             if not isinstance(self.policy, SearchPolicy):
                 raise CodingMemoryValidationError("policy must be SearchPolicy")
@@ -87,9 +96,36 @@ class CodingMemory:
             return previous
         chunks = extract(parsed)
         vectors = self.retriever.embed_new([chunk.text for chunk in chunks])
+
+        def publish_vectors() -> None:
+            """在 SQLite 幂等键加写锁后发布向量，避免并发冲突覆盖。"""
+            if self.vector_index is None or self.retriever.fingerprint is None:
+                return
+            ids = [
+                self.store.chunk_id(
+                    self.store.message_id(user_id, request_id, chunk.message_index),
+                    chunk.start,
+                    chunk.end,
+                )
+                for chunk in chunks
+            ]
+            try:
+                self.vector_index.upsert(user_id, self.retriever.fingerprint, ids, vectors)
+            except Exception as exc:
+                raise CodingMemoryError(
+                    "vector index write failed; memory was not committed"
+                ) from exc
+
         with self._operation():
             return self.store.add(
-                request_id, user_id, session_id, parsed, chunks, vectors, self.retriever.fingerprint
+                request_id,
+                user_id,
+                session_id,
+                parsed,
+                chunks,
+                vectors,
+                self.retriever.fingerprint,
+                before_publish=publish_vectors,
             )
 
     def search(
@@ -109,6 +145,11 @@ class CodingMemory:
         require_text(user_id, "user_id")
         with self._operation():
             self.store.delete_scope(user_id)
+        if self.vector_index is not None:
+            try:
+                self.vector_index.delete_scope(user_id)
+            except Exception as exc:
+                raise CodingMemoryError("vector index scope deletion failed") from exc
 
     def corpus_fingerprint(self, user_ids: Iterable[str]) -> str:
         """返回有序 scope revision 快照的确定性指纹。."""
@@ -127,5 +168,9 @@ class CodingMemory:
 
     def close(self) -> None:
         """关闭 SQLite 连接。."""
-        with self._operation():
-            self.store.close()
+        try:
+            with self._operation():
+                self.store.close()
+        finally:
+            if self.vector_index is not None:
+                self.vector_index.close()

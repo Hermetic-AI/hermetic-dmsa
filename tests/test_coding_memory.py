@@ -37,6 +37,13 @@ def test_sparse_only_search_finds_original_evidence(tmp_path) -> None:
     memory.close()
 
 
+def test_experience_weight_can_disable_card_reranking() -> None:
+    """评测可以把原始混合检索与经验卡完整策略分开对照。"""
+    assert SearchPolicy(experience_weight=0).experience_weight == 0
+    with pytest.raises(CodingMemoryValidationError):
+        SearchPolicy(experience_weight=11)
+
+
 def test_idempotency_conflict_and_restart(tmp_path) -> None:
     """相同来源重试稳定, 冲突拒绝, 重开后保留数据。"""
     path = tmp_path / "memory.db"
