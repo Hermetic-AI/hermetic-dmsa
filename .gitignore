@@ -51,6 +51,7 @@ coverage.xml
 # Build artifacts
 *.whl
 *.tar.gz
+!vendor/pmd-*.tar.gz
 
 # Local data
 hermetic-dmsa.db
@@ -66,6 +67,7 @@ data/
 # Local configs
 .env
 .env.local
+secrets/
 *.toml.local
 
 # OS

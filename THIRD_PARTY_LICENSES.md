@@ -6,7 +6,14 @@
 
 | 包 | License | 用途 |
 |---|---|---|
-| pmd | Apache 2.0 | 底层记忆库（`analysis/pmd_skeleton`）|
+| pmd 0.1.0 | Apache 2.0 | 底层记忆库；固定源码包及出处见 [vendor/README.md](vendor/README.md) |
+
+PMD 源码完整随附于 `vendor/pmd-0.1.0.tar.gz`，包含 Apache-2.0 文本。
+源码文件与原研究工作区快照保持字节一致，不在归档中维护独立分叉。
+容器包含本项目 LICENSE / NOTICE / 本清单和 PMD 出处；安装的 wheel 还包含各自许可证。
+锁定的 HTTP 运行依赖见 `deploy/requirements.lock`；FastAPI、Starlette、Uvicorn、
+HTTPX/HTTPX2、AnyIO、Pydantic、NetworkX、ulid-py 均为 MIT/BSD 许可，
+NumPy 为 BSD-3-Clause，OpenAI SDK 为 Apache-2.0；详细声明以发行包内许可证为准。
 
 ## 可选依赖
 

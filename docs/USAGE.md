@@ -33,12 +33,12 @@
 
 ```bash
 cd hermetic-dmsa
-pip install -e ../analysis/pmd_skeleton    # PMD skeleton（路径依赖）
+pip install ./vendor/pmd-0.1.0.tar.gz     # 随附的固定 PMD 源码包
 pip install -e ".[all]"                     # hermetic-dmsa 本体 + dev 依赖
 ```
 
-> 💡 **PMD skeleton 路径依赖**：论文发表后改 `pip install pmd`（PyPI）。
-> 如果你换环境（如 CI），先 `pip install -e ../analysis/pmd_skeleton` 装 PMD skeleton，再装本项目。
+> PMD 的固定源码包随 checkout 提供；先安装 vendor 包，再安装本项目。
+> 来源与升级方式见 [分发与部署说明](deployment.md)，不要用未经核实的同名 PyPI 包替换。
 
 确认 `dmsa-mcp-server` 和 `dmsa-inspect` 在 PATH 中：
 

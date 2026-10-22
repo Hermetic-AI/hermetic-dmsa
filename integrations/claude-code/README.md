@@ -8,7 +8,7 @@
 
 ```bash
 cd hermetic-dmsa
-pip install -e ../analysis/pmd_skeleton
+pip install ./vendor/pmd-0.1.0.tar.gz
 pip install -e .
 ```
 

@@ -1,0 +1,13 @@
+services:
+  memory:
+    command: ["--profile", "competition", "--host", "0.0.0.0", "--storage", "/data/coding.sqlite3", "--dimension", "${DMSA_EMBEDDING_DIMENSION:-1536}"]
+    restart: "no"
+    environment:
+      DMSA_MEMORY_API_KEY: "${DMSA_MEMORY_API_KEY:-}"
+      DMSA_EMBEDDING_BASE_URL: "${DMSA_EMBEDDING_BASE_URL:-}"
+      DMSA_EMBEDDING_API_KEY: "${DMSA_EMBEDDING_API_KEY:-}"
+      DMSA_EMBEDDING_MODEL: "${DMSA_EMBEDDING_MODEL:-}"
+    volumes:
+      - competition-data:/data
+volumes:
+  competition-data:

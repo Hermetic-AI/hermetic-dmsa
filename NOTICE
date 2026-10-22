@@ -8,3 +8,8 @@ This product depends on:
 - pmd (Apache 2.0) — Provenance-aware Memory DAG library
 - Python standard library (PSF License)
 - Optional: hdbscan, openai, mkdocs (see THIRD_PARTY_LICENSES.md)
+
+The bundled PMD 0.1.0 source snapshot is attributed to PMD Maintainers.
+Its source files are unchanged from the research workspace snapshot dated
+2026-10-22. The complete Apache-2.0 text was added to the source distribution.
+See vendor/README.md and vendor/SHA256SUMS for provenance and integrity.

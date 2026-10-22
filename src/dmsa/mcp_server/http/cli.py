@@ -1,11 +1,13 @@
 # ruff: noqa: RUF002, D415
 """Coding Memory HTTP CLI。"""
+
 from __future__ import annotations
 
 import argparse
-import os
 
+from dmsa.errors import ConfigError
 from dmsa.mcp_server.http.app import create_app
+from dmsa.mcp_server.http.runtime import load_settings
 from dmsa.memory import CodingMemory
 
 
@@ -25,28 +27,20 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     """校验 profile 后启动 uvicorn，且关闭自有 memory。"""
     args = build_parser().parse_args(argv)
-    key = os.environ.get(args.api_key_env, "")
-    if not key.strip():
-        raise SystemExit(f"required environment variable is unset: {args.api_key_env}")
+    try:
+        settings = load_settings(args.profile, args.api_key_env, args.endpoint_env, args.dimension)
+    except ConfigError as exc:
+        raise SystemExit(str(exc)) from None
+    client = None
     if args.profile == "competition":
-        endpoint = os.environ.get(args.endpoint_env, "")
-        if not endpoint.strip():
-            raise SystemExit(f"required environment variable is unset: {args.endpoint_env}")
-        if args.dimension <= 0:
-            raise SystemExit("embedding dimension must be positive")
-        model = os.environ.get("DMSA_EMBEDDING_MODEL", "text-embedding-v4")
-        if model != "text-embedding-v4":
-            raise SystemExit("competition profile requires text-embedding-v4")
         try:
             import openai
         except ImportError as exc:
             raise SystemExit("install hermetic-dmsa[http] to use competition profile") from exc
         from dmsa.mcp_server.http.embedding import TextEmbeddingV4
-        embedding_key = os.environ.get("DMSA_EMBEDDING_API_KEY", "")
-        if not embedding_key.strip():
-            raise SystemExit("required environment variable is unset: DMSA_EMBEDDING_API_KEY")
-        client = openai.OpenAI(api_key=embedding_key, base_url=endpoint)
-        embedder = TextEmbeddingV4(client, args.dimension)
+
+        client = openai.OpenAI(api_key=settings.embedding_key, base_url=settings.endpoint)
+        embedder = TextEmbeddingV4(client, settings.dimension)
     else:
         embedder = None
     try:
@@ -56,14 +50,16 @@ def main(argv: list[str] | None = None) -> int:
     memory: CodingMemory | None = None
     try:
         memory = CodingMemory(args.storage, embedder=embedder)
-        uvicorn.run(create_app(memory, key), host=args.host, port=args.port, log_config=None)
+        uvicorn.run(
+            create_app(memory, settings.api_key),
+            host=args.host,
+            port=args.port,
+            log_config=None,
+            access_log=False,
+        )
     finally:
         if memory is not None:
             memory.close()
-        if args.profile == "competition" and "client" in locals():
+        if client is not None:
             client.close()
     return 0
-
-
-
-

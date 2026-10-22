@@ -7,13 +7,11 @@ on:
 
 permissions:
   contents: write
-  id-token: write  # for PyPI trusted publishing
 
 jobs:
-  publish-pypi:
-    name: Publish to PyPI
+  build-release:
+    name: Build standalone source and wheelhouse
     runs-on: ubuntu-latest
-    environment: pypi
     steps:
       - uses: actions/checkout@v4
         with:
@@ -22,26 +20,37 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install PMD skeleton
-        run: |
-          cd ..
-          pip install -e analysis/pmd_skeleton
+        run: pip install ./vendor/pmd-0.1.0.tar.gz
       - name: Install build + twine
         run: pip install build twine
       - name: Build
         run: python -m build
-      - name: Publish
-        uses: pypa/gh-action-pypi-publish@release/v1
+      - name: Build dependency wheelhouse
+        run: pip wheel --require-hashes --find-links vendor -r deploy/requirements.lock -w wheelhouse
+      - name: Upload standalone distribution
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-distribution
+          path: |
+            dist/*
+            wheelhouse/*
 
   github-release:
     name: GitHub Release
-    needs: publish-pypi
+    needs: build-release
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-distribution
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
           body_path: CHANGELOG.md
+          files: |
+            dist/*
+            wheelhouse/*

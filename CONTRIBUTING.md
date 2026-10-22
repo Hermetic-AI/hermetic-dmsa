@@ -2,6 +2,9 @@
 
 感谢您对 hermetic-dmsa 的贡献！
 
+独立 checkout 的安装、Docker 验收和固定 PMD 源码包维护见 [部署与分发说明](docs/deployment.md)。
+运行正常测试使用 `pip install ./vendor/pmd-0.1.0.tar.gz`，再安装 `pip install -e '.[http,dev]' httpx`。
+
 ## 提交流程
 
 1. Fork 本仓库

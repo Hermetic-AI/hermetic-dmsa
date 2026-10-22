@@ -1,0 +1,21 @@
+name: dmsa-memory
+services:
+  memory:
+    image: hermetic-dmsa:local
+    build: .
+    init: true
+    restart: unless-stopped
+    ports:
+      - "${DMSA_HTTP_BIND:-127.0.0.1}:${DMSA_HTTP_PORT:-8000}:8000"
+    environment:
+      DMSA_MEMORY_API_KEY: "${DMSA_MEMORY_API_KEY:-local-development-only-change-me}"
+    volumes:
+      - memory-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    stop_grace_period: 30s
+volumes:
+  memory-data:

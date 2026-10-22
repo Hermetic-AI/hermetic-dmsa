@@ -41,7 +41,7 @@ dmsa-mcp-server --storage ~/.hermetic-dmsa/hermes.sqlite
 ## 安装
 
 ```bash
-pip install -e ../analysis/pmd_skeleton  # PMD 库
+pip install ./vendor/pmd-0.1.0.tar.gz  # 随附的固定 PMD 源码包
 pip install -e .                          # hermetic-dmsa 本体
 ```
 

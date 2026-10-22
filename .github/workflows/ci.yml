@@ -16,11 +16,9 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install PMD skeleton
-        run: |
-          cd ..
-          pip install -e analysis/pmd_skeleton
+        run: pip install ./vendor/pmd-0.1.0.tar.gz
       - name: Install dev deps
-        run: pip install -e ".[dev]"
+        run: pip install -e ".[http,dev]" httpx
       - name: ruff check
         run: ruff check src tests
       - name: ruff format check
@@ -35,11 +33,9 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install PMD skeleton
-        run: |
-          cd ..
-          pip install -e analysis/pmd_skeleton
+        run: pip install ./vendor/pmd-0.1.0.tar.gz
       - name: Install dev deps
-        run: pip install -e ".[dev]"
+        run: pip install -e ".[http,dev]" httpx
       - name: mypy
         run: mypy src/dmsa --strict
 
@@ -57,11 +53,9 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - name: Install PMD skeleton
-        run: |
-          cd ..
-          pip install -e analysis/pmd_skeleton
+        run: pip install ./vendor/pmd-0.1.0.tar.gz
       - name: Install dev deps
-        run: pip install -e ".[dev]"
+        run: pip install -e ".[http,dev]" httpx
       - name: pytest
         run: pytest tests/ -v
 
@@ -75,11 +69,9 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install PMD skeleton
-        run: |
-          cd ..
-          pip install -e analysis/pmd_skeleton
+        run: pip install ./vendor/pmd-0.1.0.tar.gz
       - name: Install dev deps
-        run: pip install -e ".[dev]"
+        run: pip install -e ".[http,dev]" httpx
       - name: pytest with coverage
         run: pytest --cov=dmsa --cov-fail-under=80
 
@@ -93,9 +85,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install PMD skeleton
-        run: |
-          cd ..
-          pip install -e analysis/pmd_skeleton
+        run: pip install ./vendor/pmd-0.1.0.tar.gz
       - name: Install build
         run: pip install build
       - name: Build
@@ -116,8 +106,18 @@ jobs:
           python-version: "3.12"
       - name: Install
         run: |
-          cd ..
-          pip install -e analysis/pmd_skeleton
+          pip install ./vendor/pmd-0.1.0.tar.gz
           pip install -e ".[dev]"
       - name: pip-audit
         run: pip-audit --strict
+
+  container:
+    name: Standalone container contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ./vendor/pmd-0.1.0.tar.gz ".[http,dev]" httpx
+      - run: pytest tests/container_contract.py -q --no-cov

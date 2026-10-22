@@ -1,0 +1,9 @@
+include LICENSE NOTICE THIRD_PARTY_LICENSES.md Dockerfile compose.yaml .dockerignore .env.example
+include Makefile AGENTS.md CONTRIBUTING.md
+recursive-include vendor *.tar.gz *.md SHA256SUMS
+recursive-include deploy *.yaml *.lock
+recursive-include docs *.md
+prune docs/superpowers
+include tests/container_contract.py tests/conftest.py
+recursive-include examples *.py
+recursive-include integrations *.md *.json *.toml

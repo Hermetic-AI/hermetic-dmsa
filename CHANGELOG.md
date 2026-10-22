@@ -1,5 +1,9 @@
 ## 0.2.0.dev0 (development)
 
+- Added standalone PMD source packaging, hashed Docker dependencies, non-root image,
+  persistent Compose deployment, mounted secrets, and Add/Search/restart smoke checks.
+- Competition startup now requires an explicit embedding model; missing configuration
+  fails before storage or server initialization.
 - Added the optional Coding Memory HTTP API and CLI.
 - Added explicit sparse development and configured text-embedding-v4 profiles.
 - This is an unpublished development build; scale and provider compatibility remain unvalidated.
@@ -41,4 +45,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Added optional authenticated Coding Memory HTTP API and `dmsa-memory-http`.
 - Added explicit sparse development and text-embedding-v4 competition profiles.
-- This is an unpublished development version; no deployment or scale validation is claimed.
+- Sparse Docker deployment is verified; provider compatibility and competition scale remain unvalidated.

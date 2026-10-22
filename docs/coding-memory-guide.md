@@ -79,15 +79,9 @@ flowchart LR
 
 ### 2.1 本地开发模式
 
-本仓库依赖研究工作区的 PMD skeleton。当前工作区结构是：
-
-```text
-agent-memo/
-├─ analysis/pmd_skeleton/pyproject.toml
-└─ hermetic-dmsa/pyproject.toml
-```
-
-若只有 GitHub clone，需要另外取得同一工作区的 `analysis/pmd_skeleton` 源码，并把安装路径替换为其实际位置；本仓库未打包该依赖，也未提供独立安装途径。不要安装来源不明的同名 `pmd` 包。
+独立 clone 已包含固定 PMD 源码发行包 `vendor/pmd-0.1.0.tar.gz`，无需 sibling
+checkout；出处与升级方式见 [vendor/README.md](../vendor/README.md)。不要安装
+来源不明的同名 `pmd` 包。容器一键启动与持久化验收见[部署指南](deployment.md)。
 
 在 `hermetic-dmsa/` 中执行。Windows PowerShell：
 
@@ -95,7 +89,7 @@ agent-memo/
 git switch feat/coding-memory-rsi
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install -e ../analysis/pmd_skeleton
+python -m pip install ./vendor/pmd-0.1.0.tar.gz
 python -m pip install -e ".[http,dev]" httpx
 python -c "import sqlite3; c=sqlite3.connect(':memory:'); c.execute('CREATE VIRTUAL TABLE t USING fts5(text)')"
 $env:DMSA_MEMORY_API_KEY = "dev-secret"
@@ -108,7 +102,7 @@ Linux/macOS：
 git switch feat/coding-memory-rsi
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install -e ../analysis/pmd_skeleton
+python -m pip install ./vendor/pmd-0.1.0.tar.gz
 python -m pip install -e '.[http,dev]' httpx
 python -c "import sqlite3; c=sqlite3.connect(':memory:'); c.execute('CREATE VIRTUAL TABLE t USING fts5(text)')"
 export DMSA_MEMORY_API_KEY=dev-secret
@@ -519,7 +513,7 @@ python examples/01_quickstart_mcp.py
 
 | 现象 | 检查 |
 |---|---|
-| 找不到 pmd / 装错同名包 | 先从本地 analysis/pmd_skeleton 安装 |
+| 找不到 pmd / 装错同名包 | 先安装随附的 vendor/pmd-0.1.0.tar.gz |
 | no such module: fts5 | 使用启用 FTS5 的 Python/SQLite |
 | 命令不在 PATH | 激活虚拟环境，或用可执行文件绝对路径 |
 | Health 通但请求 401 | Agent/新终端没继承密钥，或 header 错 |

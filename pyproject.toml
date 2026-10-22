@@ -39,8 +39,8 @@ classifiers = [
 ]
 # 三版本号（PD9）：lib 用 SemVer（v0.1.0 静态；后续可切 setuptools_scm），storage / wire 在 dmsa.version 中独立维护。
 dependencies = [
-    # PMD skeleton（来自 analysis/pmd_skeleton 路径依赖；论文发表后改 PyPI 拉取）
-    "pmd",
+    # PMD 的可审计源码发行包随 checkout 提供，见 vendor/README.md。
+    "pmd==0.1.0",
     "tomli>=2.0; python_version < '3.11'",
     # 标准库已经提供 hashlib / json / dataclasses / sqlite3 / asyncio / typing / pathlib
     # 强制零运行时 LLM 依赖（PD1 + 用户硬约束：零依赖 + 静态 backward deriver）
@@ -75,7 +75,7 @@ dev = [
 ]
 # 一键装齐所有可选（生产环境 CI / 论文复现用）
 all = [
-    "hermetic-dmsa[llm,clustering,docs,dev]",
+    "hermetic-dmsa[llm,clustering,docs,dev,http]",
 ]
 http = [
     "fastapi>=0.110",
@@ -95,6 +95,7 @@ dmsa-mcp-server = "dmsa.mcp_server.cli:main"
 # Inspect CLI（只读诊断工具）
 dmsa-inspect = "dmsa.inspect.main:main"
 dmsa-memory-http = "dmsa.mcp_server.http.cli:main"
+dmsa-memory-smoke = "dmsa.mcp_server.http.smoke:main"
 
 # ============================================================================
 # 工具配置（PD1）

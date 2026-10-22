@@ -10,7 +10,13 @@
 
 安装 `.[http]` 后 `dmsa-memory-http --profile sparse-dev` 运行离线稀疏开发
 模式。`competition` profile 要求显式 endpoint、embedding key 与
-`text-embedding-v4` 模型。PMD 仍是 workspace sibling 依赖，当前包不能独立部署。
+`text-embedding-v4` 模型，缺失模型不使用隐式默认值。随附固定 PMD 源码包支持
+独立 checkout 和 Docker 部署，见[部署说明](deployment.md)。
+
+CLI 支持 `DMSA_MEMORY_API_KEY_FILE` / `DMSA_EMBEDDING_API_KEY_FILE` 挂载密钥；
+非空环境值与对应文件同时提供会抛出 `ConfigError`，CLI 转为不带敏感内容的退出。
+`dmsa-memory-smoke` 验证 `/health`、`/add` 与 `/search`，`--search-only` 只验证
+相同 request 的已持久化证据，`--health-only` 无需 key 且不写入。
 
 # MemoryLayer API
 
@@ -46,7 +52,7 @@ CLI 的 `--storage` 和全局配置 `storage.path` 使用同样的接线。
 `export_state` / `import_state` 保留 `dmsa.memory.v1` 格式。
 导入产生独立内存副本，保留 payload 的配置元数据，但不会重新打开并修改其原始数据库。
 
-PMD 目前是 workspace sibling 路径依赖，本页不承诺独立公开安装。
+PMD 从仓库随附的固定 Apache-2.0 源码发行包安装，参见[分发说明](deployment.md)。
 
 ## CodingMemory
 

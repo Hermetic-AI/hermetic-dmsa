@@ -1,0 +1,15 @@
+*
+!src/
+!src/**
+!vendor/
+!vendor/**
+!deploy/
+!deploy/requirements.lock
+!pyproject.toml
+!README.md
+!LICENSE
+!NOTICE
+!THIRD_PARTY_LICENSES.md
+!MANIFEST.in
+**/__pycache__/
+**/*.py[cod]

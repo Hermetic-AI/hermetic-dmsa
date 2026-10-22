@@ -16,7 +16,7 @@
 
 ```bash
 cd hermetic-dmsa
-pip install -e ../analysis/pmd_skeleton    # PMD skeleton
+pip install ./vendor/pmd-0.1.0.tar.gz     # 固定 PMD 源码包
 pip install -e .                            # hermetic-dmsa 本体
 ```
 

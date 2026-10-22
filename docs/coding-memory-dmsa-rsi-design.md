@@ -5,7 +5,7 @@
 
 ## 当前实现状态（0.2.0.dev0）
 
-已实现本地 provenance-aware Coding Memory、有界检索和鉴权 `/add`、`/search` 子集。sparse 开发模式只用稀疏索引；competition profile 要求配置真实 text-embedding-v4 endpoint。`/v1/runs`、在线进化、官方 endpoint 验证和 1.8B 规模验证均未实现。打包目前依赖 sibling PMD skeleton。
+已实现本地 provenance-aware Coding Memory、有界检索和鉴权 `/add`、`/search` 子集。sparse 开发模式只用稀疏索引；competition profile 要求配置真实 text-embedding-v4 endpoint。`/v1/runs`、在线进化、官方 endpoint 验证和 1.8B 规模验证均未实现。独立打包与 Docker 部署见 [deployment.md](deployment.md)，PMD 固定源码发行包随仓库提供。
 
 ## 1. 目标、合约与关键判断
 

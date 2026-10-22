@@ -34,7 +34,15 @@
 
 ## 先在本地跑起来
 
-以下命令在本仓库目录执行。需要 Python 3.10+、支持 FTS5 的 SQLite，以及工作区中的 `../analysis/pmd_skeleton`。它不是可用任意同名 PyPI 包替代的依赖；单独 clone 本仓库还不够，参见[安装说明](docs/coding-memory-guide.md#2-安装与启动)。
+独立 checkout 即可启动，无需付费模型凭据：
+
+```bash
+docker compose up -d --build
+docker compose exec -T memory dmsa-memory-smoke
+```
+
+默认仅监听本机，使用持久卷。生产密钥、competition 模式、挂载 secrets、重启验收与开源分发见[部署指南](docs/deployment.md)。
+以下源码安装需要 Python 3.10+ 与支持 FTS5 的 SQLite；固定 PMD 源码包已随仓库提供。
 
 Windows PowerShell：
 
@@ -42,7 +50,7 @@ Windows PowerShell：
 git switch feat/coding-memory-rsi
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install -e ../analysis/pmd_skeleton
+python -m pip install ./vendor/pmd-0.1.0.tar.gz
 python -m pip install -e ".[http,dev]" httpx
 $env:DMSA_MEMORY_API_KEY = "dev-secret"
 dmsa-memory-http --profile sparse-dev --storage ./coding.sqlite3
@@ -54,7 +62,7 @@ Linux/macOS：
 git switch feat/coding-memory-rsi
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install -e ../analysis/pmd_skeleton
+python -m pip install ./vendor/pmd-0.1.0.tar.gz
 python -m pip install -e '.[http,dev]' httpx
 export DMSA_MEMORY_API_KEY=dev-secret
 dmsa-memory-http --profile sparse-dev --storage ./coding.sqlite3
@@ -89,7 +97,7 @@ python -m pytest tests/ -q
 ```
 
 前两个是无网络示例；使用临时或内存数据库，退出后不保留数据。完整测试生成 `htmlcov/index.html`。
-2026-10-22 的代码验证结果：**266 项测试通过，覆盖率 85.39%**；本轮修改涉及的代码通过 Ruff/mypy，代码复审无剩余重要问题。示例验证工程流程，不代表 Coding Agent 修复成功率。
+2026-10-22 的代码验证结果：**290 项测试通过，覆盖率 85.71%**，另有 **7 项真实容器验收通过**；本轮修改涉及的代码通过 Ruff/mypy。仓库已有的全量 lint/type 问题尚未全部清理。示例验证工程流程，不代表 Coding Agent 修复成功率。
 
 想观察记忆是否帮助了另一个 Agent，按[双 Agent 对照实验](docs/coding-memory-guide.md#5-自己用其他-agent-测试记忆效果)操作。
 
@@ -100,12 +108,13 @@ python -m pytest tests/ -q
 - RSI 改进的是开发集检索策略，不修改代码/模型权重；注册表中的策略不会自动加载到 HTTP 服务。
 - HTTP 仅支持文本，`options` 只接受空数组；`/v1/runs`、新版 MCP 桥和可视化管理台未实现。
 - API key 授权访问整个服务，`user_id` 是检索分区而非独立用户认证。多 Agent 共用项目时，由可信调用端固定 scope。
-- PMD 仍需本地安装；旧 MemoryLayer 的持久化 SQLite 快照回滚会显式拒绝。
+- 源码安装先安装仓库随附的固定 PMD 包；旧 MemoryLayer 的持久化 SQLite 快照回滚会显式拒绝。
 
 ## 文档导航
 
 - [技术方案、运行、比赛接口与 Agent 实验](docs/coding-memory-guide.md)
 - [公开 API](docs/api-reference.md)
+- [独立部署、Docker、密钥与开源分发](docs/deployment.md)
 - [Coding Memory 算法](docs/algorithms/coding-memory.md) · [离线 RSI](docs/algorithms/offline-rsi.md)
 - [论文映射](docs/paper-mapping.md) · [原有 MCP 集成资料](docs/integrations.md)
 - [开发规范](AGENTS.md) · [变更记录](CHANGELOG.md)

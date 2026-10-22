@@ -15,14 +15,14 @@ help:
 	@echo "  docs       — 构建文档站"
 	@echo "  build      — 构建 wheel + sdist"
 	@echo "  clean      — 清理 build 产物"
-	@echo "  release    — 触发 PyPI 发布（需先 git tag v*.*.*）"
+	@echo "  release    — 触发 GitHub 源码与 wheelhouse 发布（需先 git tag v*.*.*）"
 
 install:
-	pip install -e ../analysis/pmd_skeleton
+	pip install ./vendor/pmd-0.1.0.tar.gz
 	pip install -e .
 
 install-all:
-	pip install -e ../analysis/pmd_skeleton
+	pip install ./vendor/pmd-0.1.0.tar.gz
 	pip install -e ".[all]"
 
 lint:
@@ -54,4 +54,4 @@ release:
 	@if [ -z "$(VERSION)" ]; then echo "Usage: make release VERSION=0.1.0"; exit 1; fi
 	git tag v$(VERSION)
 	git push origin v$(VERSION)
-	@echo "Tagged v$(VERSION). PyPI publish will run via .github/workflows/release.yml"
+	@echo "Tagged v$(VERSION). GitHub release will run via .github/workflows/release.yml"
