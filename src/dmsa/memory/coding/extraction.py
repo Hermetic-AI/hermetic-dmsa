@@ -11,7 +11,12 @@ CHUNK_SIZE = 1800
 OVERLAP = 160
 PATH_RE = re.compile(r"(?<![\w])(?:[\w.-]+/)+[\w.-]+(?:\.[\w.-]+)?")
 SYMBOL_RE = re.compile(r"\b[A-Za-z_][A-Za-z0-9_]{2,}\b")
-ERROR_RE = re.compile(r"(?:Traceback|\bError\b|\bException\b|FAILED|\bfailed\b)", re.I)
+ERROR_RE = re.compile(
+    r"(?:Traceback \(most recent call last\)|"
+    r"\b[A-Za-z_][\w.]*Error:\s|\b[A-Za-z_][\w.]*Exception:\s|"
+    r"^\s*FAILED(?:\s|:))",
+    re.I | re.M,
+)
 PASS_RE = re.compile(r"(?:\bpassed\b|\bPASS\b|tests? passed)", re.I)
 
 

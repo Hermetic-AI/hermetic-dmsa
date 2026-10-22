@@ -10,7 +10,12 @@ from collections.abc import Iterable
 from pathlib import Path
 
 from dmsa.memory.coding.extraction import Chunk
-from dmsa.memory.coding.models import CodingMemoryConflictError, CorpusState, SourceMessage
+from dmsa.memory.coding.models import (
+    CodingMemoryConflictError,
+    CodingMemoryError,
+    CorpusState,
+    SourceMessage,
+)
 from dmsa.memory.coding.schema import SCHEMA
 
 
@@ -167,8 +172,8 @@ class CodingStore:
                     (user_id, expression, limit),
                 )
             )
-        except sqlite3.OperationalError:
-            return []
+        except sqlite3.OperationalError as exc:
+            raise CodingMemoryError("sparse retrieval database operation failed") from exc
 
     def exact_candidates(
         self, terms: tuple[str, ...], user_id: str, limit: int

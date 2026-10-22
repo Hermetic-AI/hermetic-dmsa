@@ -7,8 +7,10 @@ import sqlite3
 import pytest
 
 from dmsa.memory import CodingMemory, SearchPolicy, SourceMessage
+from dmsa.memory.coding.extraction import extract
 from dmsa.memory.coding.models import (
     CodingMemoryConflictError,
+    CodingMemoryError,
     CodingMemoryValidationError,
     DenseScopeTooLargeError,
 )
@@ -187,3 +189,30 @@ def test_invalid_policy_weights(value) -> None:
     """策略拒绝非有限数字与布尔权重。"""
     with pytest.raises(CodingMemoryValidationError):
         SearchPolicy(dense_weight=value)
+
+
+def test_sparse_database_errors_are_not_silent_and_punctuation_is_safe(tmp_path) -> None:
+    """FTS 结构故障以记忆层异常报告, 标点查询仍正常返回空结果。"""
+    memory = CodingMemory(tmp_path / "memory.db")
+    assert memory.search('"*()', "u", 2) == []
+    memory.store.db.execute("DROP TABLE chunks")
+    with pytest.raises(CodingMemoryError, match="sparse retrieval"):
+        memory.store.sparse_candidates("evidence", "u", 2)
+    memory.close()
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["no error occurred", "The exception was handled", "the build did not fail"],
+)
+def test_descriptive_or_negated_error_text_remains_unknown(text) -> None:
+    """否定或描述性错误词不应成为观察到的失败证据。"""
+    chunks = extract((SourceMessage("tool", text),))
+    assert chunks[0].outcome == "unknown"
+
+
+@pytest.mark.parametrize("text", ["Traceback (most recent call last):", "FAILED test_parser"])
+def test_explicit_failure_signals_are_retained(text) -> None:
+    """明确 traceback 与测试失败继续被标记。"""
+    chunks = extract((SourceMessage("tool", text),))
+    assert chunks[0].outcome == "observed_failure"
