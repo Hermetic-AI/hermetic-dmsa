@@ -1,3 +1,9 @@
+## 0.2.0.dev0 (development)
+
+- Added the optional Coding Memory HTTP API and CLI.
+- Added explicit sparse development and configured text-embedding-v4 profiles.
+- This is an unpublished development build; scale and provider compatibility remain unvalidated.
+
 # Changelog
 
 All notable changes to this project will be documented in this file.
@@ -31,3 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`dmsa_apply_gradient` 假实现**：现在真正把融合后的文本梯度写回 MemoryLayer（新增 `MemoryLayer.apply_text_gradient`，生成带 lineage 的 successor 节点，可 snapshot/rollback；`requires_grad=False` 节点明确拒绝）；`dmsa_feedback` 的聚合结果按 feedback_id 缓存供 apply 查询；schema 目标暂明确报错并指向 `ToolBPEngine`
 
 [Unreleased]: https://github.com/anthropic-research/hermetic-dmsa/compare/main...HEAD
+# 0.2.0.dev0 (development)
+
+- Added optional authenticated Coding Memory HTTP API and `dmsa-memory-http`.
+- Added explicit sparse development and text-embedding-v4 competition profiles.
+- This is an unpublished development version; no deployment or scale validation is claimed.

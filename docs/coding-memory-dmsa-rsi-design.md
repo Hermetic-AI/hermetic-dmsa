@@ -3,6 +3,10 @@
 日期：2026-10-22。状态：技术设计，尚未实施、部署或取得官方成绩。
 本文取代此前文本赛道方案中的任务建模；共用的持久化与接口正确性诊断仍有效。
 
+## 当前实现状态（0.2.0.dev0）
+
+已实现本地 provenance-aware Coding Memory、有界检索和鉴权 `/add`、`/search` 子集。sparse 开发模式只用稀疏索引；competition profile 要求配置真实 text-embedding-v4 endpoint。`/v1/runs`、在线进化、官方 endpoint 验证和 1.8B 规模验证均未实现。打包目前依赖 sibling PMD skeleton。
+
 ## 1. 目标、合约与关键判断
 
 目标：让平台的固定 coding agent 能从大量同仓库历史中，找到当前任务真正适用的
@@ -428,3 +432,11 @@ profile 明确拒绝 hash embedding，依赖通过 extras 安装。
 先前“上传当前版本”的请求仍保留：中断前只读检查了 remote/status，没有 commit
 或 push 成功记录。恢复开发时先审查当前未提交文件，排除凭证/生成物，把源码基线
 推到用户指定 Hermetic-AI/hermetic-dmsa；随后另立开发提交，不能声称已经上传。
+# Implementation status (0.2.0.dev0)
+
+Implemented subset: local provenance-aware Coding Memory, bounded search, and
+the authenticated `/add` and `/search` HTTP adapter. Sparse development mode
+uses deterministic hash vectors; the optional competition profile requires a
+configured text-embedding-v4 compatible endpoint. `/v1/runs`, online evolution,
+official endpoint validation, and 1.8B-scale validation remain unimplemented.
+Packaging currently depends on the sibling PMD skeleton.

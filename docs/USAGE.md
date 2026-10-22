@@ -1,3 +1,12 @@
+# Coding Memory HTTP (development)
+
+安装 `.[http]`、设置 `DMSA_MEMORY_API_KEY`，执行
+`dmsa-memory-http --profile sparse-dev --storage ./coding.sqlite3`。这是仅有
+稀疏索引的本地开发模式。competition profile 还要求
+`DMSA_EMBEDDING_BASE_URL`、`DMSA_EMBEDDING_API_KEY` 和
+`DMSA_EMBEDDING_MODEL=text-embedding-v4`；不会默认推断 provider 支持该模型。
+详见 `docs/api-reference.md`。
+
 # hermetic-dmsa 使用文档
 
 > **面向读者**：把 hermetic-dmsa 接入 Claude Code / OpenCode / Hermes Agent 的**最终用户**。
@@ -620,3 +629,13 @@ aggregator = SGAAggregator(
 - **论文对应**：[`docs/paper-mapping.md`](paper-mapping.md) — 每个模块对应论文哪一章
 - **三方集成详细**：[`docs/integrations.md`](integrations.md)
 - **API reference**（待生成）：运行 `mkdocs build` 生成
+# Coding Memory HTTP (development)
+
+Install with `pip install -e '.[http]'`, set `DMSA_MEMORY_API_KEY`, then run
+`dmsa-memory-http --profile sparse-dev --storage ./coding.sqlite3`. This local
+profile uses deterministic hash embeddings and is suitable for protocol and
+workflow development only. The `competition` profile requires
+`DMSA_EMBEDDING_BASE_URL`, `DMSA_EMBEDDING_API_KEY`,
+`DMSA_EMBEDDING_MODEL=text-embedding-v4`; it sends paid/provider requests only
+when clients call `/add`. No provider is assumed to offer this model by
+default. See `docs/api-reference.md` for request schemas and response shapes.

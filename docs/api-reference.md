@@ -1,3 +1,15 @@
+## Coding Memory HTTP API (development subset)
+
+`from dmsa.mcp_server.http import create_app` 提供无认证 `GET
+/health` 与受认证 `POST /add`、`POST /search`。认证接受 Bearer、Token 或
+`X-Api-Key`。调用方注入的 CodingMemory 归调用方管理；HTTP CLI 管理自己的实例。
+消息 content 可为字符串或 `{type: "text", text: ...}` parts；只支持纯文本。
+搜索由 `user_id` 隔离，`options` 仅接受空数组。`/v1/runs` 尚未实现。
+
+安装 `.[http]` 后 `dmsa-memory-http --profile sparse-dev` 运行离线稀疏开发
+模式。`competition` profile 要求显式 endpoint、embedding key 与
+`text-embedding-v4` 模型。PMD 仍是 workspace sibling 依赖，当前包不能独立部署。
+
 # MemoryLayer API
 
 `from dmsa.memory import MemoryLayer` 的公开导入和方法签名保持稳定。
@@ -63,3 +75,18 @@ executed in the current process through `run_replay`; it atomically persists
 candidates and decisions. `rollback(version)` selects a previously accepted
 policy. This API is for development evidence; runtime feedback does not train
 or activate policies automatically.
+# Coding Memory HTTP API (development subset)
+
+`dmsa.mcp_server.http.create_app(memory, api_key)` exposes authenticated `POST
+/add`, `POST /search`, and unauthenticated `GET /health`. It does not close the
+injected `CodingMemory`; the CLI owns and closes its own database connection.
+Authentication accepts `Authorization: Bearer <key>`, `Authorization: Token
+<key>`, or `X-Api-Key`. `/add` accepts string content only; multipart/image
+content is rejected. Search is isolated by `user_id`; only empty `options` is
+currently supported. The `/v1/runs` protocol is not implemented.
+
+Install `hermetic-dmsa[http]` and run `dmsa-memory-http --profile sparse-dev`
+for the explicit local hash-vector profile. `--profile competition` requires a
+configured OpenAI-compatible endpoint and API key, model `text-embedding-v4`,
+and dimension 1536. No official provider compatibility or competition scale is
+claimed.

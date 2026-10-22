@@ -8,7 +8,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hermetic-dmsa"
-version = "0.1.0"
+version = "0.2.0.dev0"
 description = "Hermetic Differentiated Memory Self-evolving Agent — Production-grade memory layer for LLM agents with provenance-aware DAG, textual backpropagation, semantic gradient aggregation, and tool-use AST projection."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -41,6 +41,7 @@ classifiers = [
 dependencies = [
     # PMD skeleton（来自 analysis/pmd_skeleton 路径依赖；论文发表后改 PyPI 拉取）
     "pmd",
+    "tomli>=2.0; python_version < '3.11'",
     # 标准库已经提供 hashlib / json / dataclasses / sqlite3 / asyncio / typing / pathlib
     # 强制零运行时 LLM 依赖（PD1 + 用户硬约束：零依赖 + 静态 backward deriver）
 ]
@@ -76,11 +77,16 @@ dev = [
 all = [
     "hermetic-dmsa[llm,clustering,docs,dev]",
 ]
+http = [
+    "fastapi>=0.110",
+    "uvicorn>=0.27",
+    "openai>=1.0.0",
+]
 
 [project.urls]
-Homepage = "https://github.com/anthropic-research/hermetic-dmsa"
-Issues = "https://github.com/anthropic-research/hermetic-dmsa/issues"
-Changelog = "https://github.com/anthropic-research/hermetic-dmsa/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/Hermetic-AI/hermetic-dmsa"
+Issues = "https://github.com/Hermetic-AI/hermetic-dmsa/issues"
+Changelog = "https://github.com/Hermetic-AI/hermetic-dmsa/blob/main/CHANGELOG.md"
 Paper = "https://arxiv.org/abs/XXXX.XXXXX"
 
 [project.scripts]
@@ -88,6 +94,7 @@ Paper = "https://arxiv.org/abs/XXXX.XXXXX"
 dmsa-mcp-server = "dmsa.mcp_server.cli:main"
 # Inspect CLI（只读诊断工具）
 dmsa-inspect = "dmsa.inspect.main:main"
+dmsa-memory-http = "dmsa.mcp_server.http.cli:main"
 
 # ============================================================================
 # 工具配置（PD1）

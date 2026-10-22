@@ -24,6 +24,26 @@
 
 ## 快速开始
 
+### Coding Memory HTTP（开发版 0.2.0.dev0）
+
+```bash
+pip install -e ../analysis/pmd_skeleton
+pip install -e '.[http]'
+```
+
+```bash
+# 开发模式仅用 sparse 检索，不生成语义向量
+set DMSA_MEMORY_API_KEY=dev-secret
+dmsa-memory-http --profile sparse-dev --storage ./coding.sqlite3
+```
+
+```bash
+curl -H "Authorization: Bearer dev-secret" -H "Content-Type: application/json" -d '{"request_id":"req-1","user_id":"alice","session_id":"s1","messages":[{"role":"user","content":"SQLite rollback fix"}]}' http://127.0.0.1:8000/add
+curl -H "Authorization: Bearer dev-secret" -H "Content-Type: application/json" -d '{"query":"rollback","user_id":"alice","top_k":5}' http://127.0.0.1:8000/search
+```
+
+`--profile competition` 要求配置兼容 endpoint、独立 embedding key 和 `text-embedding-v4` 模型；未验证官方 endpoint 兼容性或 1.8B 部署规模。当前包仍依赖 workspace sibling PMD skeleton，尚不能独立部署，也未实现 `/v1/runs`。
+
 ### 1. 安装
 
 ```bash

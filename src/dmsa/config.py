@@ -13,12 +13,23 @@
 from __future__ import annotations
 
 import os
-from dataclasses import asdict, dataclass, field, replace
+from dataclasses import replace
 from pathlib import Path
+from typing import cast
 
-import tomllib
+try:
+    import tomllib  # type: ignore[import-not-found]
+except ModuleNotFoundError:  # Python 3.10
+    import tomli as tomllib
 
-from dmsa.errors import ConfigError, InvalidConfigValueError
+from dmsa.config_models import (
+    DMSAConfig,
+    EmbedderConfig,
+    GradientConfig,
+    MCPServerConfig,
+    StorageConfig,
+)
+from dmsa.errors import ConfigError
 
 # 配置搜索路径（按优先级从高到低）
 _CONFIG_SEARCH_PATHS: tuple[str, ...] = (
@@ -33,143 +44,14 @@ _CONFIG_SEARCH_PATHS: tuple[str, ...] = (
 _ENV_PREFIX = "DMSA_"
 
 
-@dataclass(frozen=True, slots=True)
-class StorageConfig:
-    """存储后端配置。"""
-
-    path: str = ":memory:"
-    """SQLite 数据库路径；``":memory:"`` 表示内存（仅测试用）。"""
-
-    enable_wal: bool = True
-    """是否启用 WAL 模式（生产推荐 True）。"""
-
-    backup_on_rollback: bool = True
-    """rollback 时是否自动备份。"""
-
-
-@dataclass(frozen=True, slots=True)
-class EmbedderConfig:
-    """嵌入器配置。"""
-
-    backend: str = "hash"
-    """``"hash"`` (零依赖) / ``"openai"`` / ``"sentence-transformers"``。"""
-
-    dim: int = 256
-    """嵌入维度；hash 后端固定 256，openai 固定 1536。"""
-
-    model: str = ""
-    """模型名；openai 默认为 ``text-embedding-3-small``。"""
-
-
-@dataclass(frozen=True, slots=True)
-class GradientConfig:
-    """SGA 梯度聚合配置。"""
-
-    clustering_backend: str = "fallback"
-    """``"fallback"`` (零依赖单链接) / ``"hdbscan"``。"""
-
-    min_cluster_size: int = 2
-    """HDBSCAN / fallback 最小簇大小。"""
-
-    conflict_threshold: float = 0.3
-    """冲突检测的余弦距离阈值；> 此值视为真冲突。"""
-
-    max_samples: int = 10_000
-    """单次聚合最大样本数（防 DoS）。"""
-
-    fusion_backend: str = "static"
-    """``"static"`` (零依赖拼接) / ``"rule-based"`` / ``"llm"`` (真实 LLM 融合)。"""
-
-    llm_chat_model: str = "gpt-4o-mini"
-    """``fusion_backend="llm"`` 时的 chat 模型名。"""
-
-    llm_base_url: str = ""
-    """OpenAI 兼容 endpoint；空 = 官方 API。"""
-
-    llm_api_key_env: str = "OPENAI_API_KEY"
-    """API key 环境变量名。"""
-
-
-@dataclass(frozen=True, slots=True)
-class MCPServerConfig:
-    """MCP server 配置。"""
-
-    max_feedback_length: int = 100_000
-    """单条 feedback 文本最大字符数（防 DoS）。"""
-
-    request_timeout_seconds: float = 30.0
-    """单次工具调用超时。"""
-
-    enable_metrics: bool = True
-    """是否启用 metrics 收集。"""
-
-
-@dataclass(frozen=True, slots=True)
-class DMSAConfig:
-    """hermetic-dmsa 全局配置。"""
-
-    storage: StorageConfig = field(default_factory=StorageConfig)
-    embedder: EmbedderConfig = field(default_factory=EmbedderConfig)
-    gradient: GradientConfig = field(default_factory=GradientConfig)
-    mcp_server: MCPServerConfig = field(default_factory=MCPServerConfig)
-
-    def validate(self) -> None:
-        """校验配置项值合法性。"""
-        if self.embedder.dim <= 0:
-            raise InvalidConfigValueError(
-                f"embedder.dim must be positive, got {self.embedder.dim}",
-                details={"field": "embedder.dim", "value": self.embedder.dim},
-            )
-        if self.gradient.min_cluster_size < 1:
-            raise InvalidConfigValueError(
-                f"gradient.min_cluster_size must be >= 1, got {self.gradient.min_cluster_size}",
-                details={"field": "gradient.min_cluster_size"},
-            )
-        if not 0.0 <= self.gradient.conflict_threshold <= 1.0:
-            raise InvalidConfigValueError(
-                f"gradient.conflict_threshold must be in [0, 1], got {self.gradient.conflict_threshold}",
-                details={"field": "gradient.conflict_threshold"},
-            )
-        if self.gradient.max_samples <= 0:
-            raise InvalidConfigValueError(
-                f"gradient.max_samples must be positive, got {self.gradient.max_samples}",
-                details={"field": "gradient.max_samples"},
-            )
-        if self.gradient.fusion_backend not in ("static", "rule-based", "llm"):
-            raise InvalidConfigValueError(
-                "gradient.fusion_backend must be static/rule-based/llm, "
-                f"got {self.gradient.fusion_backend!r}",
-                details={"field": "gradient.fusion_backend"},
-            )
-        if self.mcp_server.max_feedback_length <= 0:
-            raise InvalidConfigValueError(
-                "mcp_server.max_feedback_length must be positive",
-                details={"field": "mcp_server.max_feedback_length"},
-            )
-        if self.storage.path and self.storage.path != ":memory:":
-            path = Path(self.storage.path).expanduser()
-            parent = path.parent
-            if not parent.exists():
-                raise InvalidConfigValueError(
-                    f"storage path parent does not exist: {parent}",
-                    details={"storage.path": str(parent)},
-                )
-
-    def to_dict(self) -> dict[str, object]:
-        """序列化为 dict。"""
-        return {
-            "storage": asdict(self.storage),
-            "embedder": asdict(self.embedder),
-            "gradient": asdict(self.gradient),
-            "mcp_server": asdict(self.mcp_server),
-        }
-
-
 def _load_from_toml(path: Path) -> dict[str, object]:
     """从 TOML 文件加载配置。"""
     try:
         with path.open("rb") as fp:
-            return tomllib.load(fp)
+            data = cast(dict[str, object], tomllib.load(fp))
+            if not isinstance(data, dict):
+                raise ConfigError("TOML root must be a table")
+            return data
     except (OSError, tomllib.TOMLDecodeError) as exc:
         raise ConfigError(
             f"failed to load config from {path}",
@@ -223,8 +105,9 @@ def _deep_merge(base: dict[str, object], override: dict[str, object]) -> dict[st
     """递归合并 dict；override 优先。"""
     result = dict(base)
     for key, value in override.items():
-        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-            result[key] = _deep_merge(result[key], value)
+        previous = result.get(key)
+        if isinstance(previous, dict) and isinstance(value, dict):
+            result[key] = _deep_merge(cast(dict[str, object], previous), cast(dict[str, object], value))
         else:
             result[key] = value
     return result
