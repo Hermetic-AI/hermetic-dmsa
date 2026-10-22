@@ -1,113 +1,113 @@
 # hermetic-dmsa
 
-> **Hermetic Differentiated Memory Self-evolving Agent**
-> 生产级别的可微记忆层，让 Claude Code / OpenCode / Hermes / 任何 MCP 兼容 Agent 拥有「自动反向传播 + SGA 文本梯度聚合 + Tool-Use 反向传播」能力。
+**面向 Coding Agent 的记忆系统：保存历史证据，检索可复用经验，在开发集上改进检索策略。**
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![MCP Compatible](https://img.shields.io/badge/MCP-2025--06--18-green.svg)](https://modelcontextprotocol.io/)
 
----
+开发版：`0.2.0.dev0`，代码位于 [`feat/coding-memory-rsi`](https://github.com/Hermetic-AI/hermetic-dmsa/tree/feat/coding-memory-rsi)。
+旧版冻结标签：`baseline/pre-coding-rsi-20261022`。
 
-## 它是什么
+**完整使用文档：[Coding Memory 技术方案与实操指南](docs/coding-memory-guide.md)**。
+包含比赛接口、Windows/Linux 启动、Agent 接入、双 Agent 实验、结果检查和 RSI 使用方法。
 
-`hermetic-dmsa` 是一个 **生产级别的 Python 库 + MCP server**，把论文方向 1
-（"基于文本反向传播的 Agent 长短期记忆可微自进化"）工程化：
+## 最新方案做什么
 
-- **Provenance-aware Memory DAG** — 每条记忆带 `creator_prompt_id` + `creator_agent_id`，可追溯
-- **可微 Memory Schema** — `requires_grad` + `grad_learning_rate`，哪些记忆可被反向传播一目了然
-- **SGA 文本梯度聚合** — HDBSCAN 密度聚类 + 冲突检测 + 条件分支生成，解决"详尽 vs 简短"这类文本梯度冲突
-- **Tool-Use 反向传播** — 把 JSON Schema 视为可微 Variable，反向传播到工具描述本身（不止于 prompt）
-- **30 分钟接入** — 任何能跑 MCP 的 Agent 一行配置即可使用
+```text
+历史对话 / 代码修改 / 错误 / 测试输出
+                  ↓ Add
+原文持久化 + 来源定位 + 路径/符号索引 + 可选向量
+                  ↓ Search
+精确检索 + 全文检索 + 可选向量 → 融合排序 → 去重、补上下文、限制长度
+                  ↓
+当前 Agent 获得可追溯的历史证据，再自行定位、修改和运行测试
 
-论文对应关系见 [`docs/paper-mapping.md`](docs/paper-mapping.md)。
-
-## 快速开始
-
-### Coding Memory HTTP（开发版 0.2.0.dev0）
-
-```bash
-pip install -e ../analysis/pmd_skeleton
-pip install -e '.[http]'
+开发集失败案例 → 提出小幅策略修改 → 新旧策略配对回放 → 通过门槛才接受
 ```
 
+- **记得清楚**：SQLite 保存原始消息及切片，结果包含 request/session/message 与字符偏移。
+- **找得准确**：精确路径/符号、FTS5 全文和可选真实 embedding，通过 RRF 融合排序。
+- **控制噪声**：重复过滤、同会话限额、邻近片段和返回预算。声称“通过测试”只记为自述。
+- **可验证的 RSI**：离线调整检索策略；任何开发案例召回率下降都会阻止升级。
+
+本版比赛路线使用独立的 `CodingMemory` 引擎。原有 PMD Memory DAG、SGA 文本梯度、ToolBP 和 MCP 工具仍保留，**尚未与 Coding Memory HTTP 共享记忆或自动联动**。
+
+## 先在本地跑起来
+
+以下命令在本仓库目录执行。需要 Python 3.10+、支持 FTS5 的 SQLite，以及工作区中的 `../analysis/pmd_skeleton`。它不是可用任意同名 PyPI 包替代的依赖；单独 clone 本仓库还不够，参见[安装说明](docs/coding-memory-guide.md#2-安装与启动)。
+
+Windows PowerShell：
+
+```powershell
+git switch feat/coding-memory-rsi
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -e ../analysis/pmd_skeleton
+python -m pip install -e ".[http,dev]" httpx
+$env:DMSA_MEMORY_API_KEY = "dev-secret"
+dmsa-memory-http --profile sparse-dev --storage ./coding.sqlite3
+```
+
+Linux/macOS：
+
 ```bash
-# 开发模式仅用 sparse 检索，不生成语义向量
+git switch feat/coding-memory-rsi
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e ../analysis/pmd_skeleton
+python -m pip install -e '.[http,dev]' httpx
 export DMSA_MEMORY_API_KEY=dev-secret
 dmsa-memory-http --profile sparse-dev --storage ./coding.sqlite3
 ```
 
-```bash
-curl -H "Authorization: Bearer dev-secret" -H "Content-Type: application/json" -d '{"request_id":"req-1","user_id":"alice","session_id":"s1","messages":[{"role":"user","content":"SQLite rollback fix"}]}' http://127.0.0.1:8000/add
-curl -H "Authorization: Bearer dev-secret" -H "Content-Type: application/json" -d '{"query":"rollback","user_id":"alice","top_k":5}' http://127.0.0.1:8000/search
+`sparse-dev` 无需模型密钥，不调用 LLM 或 embedding 服务。默认监听 `127.0.0.1:8000`。
+在另一个终端验证存活：
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8000/health
 ```
 
-`--profile competition` 要求配置兼容 endpoint、独立 embedding key 和 `text-embedding-v4` 模型；未验证官方 endpoint 兼容性或 1.8B 部署规模。当前包仍依赖 workspace sibling PMD skeleton，尚不能独立部署，也未实现 `/v1/runs`。
+返回 `ok=True` 只代表服务存活。继续按指南中的 [Add/Search 实例](docs/coding-memory-guide.md#3-比赛对应的-http-接口)验证写入与检索。
 
-### 1. 安装
+## 比赛和 Agent 怎么接
 
-```bash
-cd hermetic-dmsa
-pip install -e ../analysis/pmd_skeleton    # 先装 PMD skeleton（路径依赖）
-pip install -e ".[all]"                     # 装 hermetic-dmsa 全功能
-```
+| 需求 | 当前入口 | 使用方法 |
+|---|---|---|
+| AML Coding Memory 的 Add/Search | HTTP `/add`、`/search` | 平台/适配器提交历史、检索证据；回答与评分由平台执行 |
+| 自己的 Coding Agent 复用历史 | 同一组 HTTP 接口 | 开始任务先 Search；完成后 Add 原始经过及测试输出 |
+| Claude Code / Codex / OpenCode 用新版记忆 | HTTP 客户端 + Agent shell/tool | 按[通用客户端与提示词](docs/coding-memory-guide.md#4-如何接入其他-agent)调用；目前没有自动安装的新版 MCP 桥 |
+| 使用原有 DAG、反馈与 ToolBP | `dmsa-mcp-server` 的 7 个工具 | 见[原有 MCP 路径](docs/coding-memory-guide.md#7-原有-mcp-能力如何使用) |
 
-零 LLM 依赖就能跑（默认 StaticFusion + HashEmbedder）。
+真实向量模式使用 `--profile competition`，要求配置兼容端点、独立 embedding key、`text-embedding-v4` 与实际向量维度，见[指南](docs/coding-memory-guide.md#22-真实向量模式)。这只是模型配置约束，尚未完成官方端点联调或取得比赛成绩。
 
-### 2. 起 MCP server
-
-```bash
-dmsa-mcp-server --storage ~/.hermetic-dmsa/db.sqlite
-```
-
-server 在 stdio 上跑 MCP JSON-RPC 2.0。详见 [`docs/integrations.md`](docs/integrations.md)。
-
-### 3. 接入 Claude Code
-
-在 `~/.claude.json` 或项目根 `.mcp.json`：
-
-```json
-{
-  "mcpServers": {
-    "hermetic-dmsa": {
-      "command": "dmsa-mcp-server",
-      "args": ["--storage", "~/.hermetic-dmsa/db.sqlite"]
-    }
-  }
-}
-```
-
-重启 Claude Code，Agent 即可调用 7 个 `dmsa_*` 工具。
-
-### 4. 跑端到端 demo
+## 如何验证
 
 ```bash
-python examples/01_quickstart_mcp.py
+python examples/02_coding_memory.py
+python examples/03_offline_rsi.py
+python -m pytest tests/ -q
 ```
 
-演示「写入记忆 → 工具调用失败 → 反馈反向传播 → SGA 聚合 → 修改工具 schema → 下一轮成功」完整循环。
+前两个是无网络示例；使用临时或内存数据库，退出后不保留数据。完整测试生成 `htmlcov/index.html`。
+2026-10-22 的代码验证结果：**266 项测试通过，覆盖率 85.39%**；本轮修改涉及的代码通过 Ruff/mypy，代码复审无剩余重要问题。示例验证工程流程，不代表 Coding Agent 修复成功率。
 
-## 论文对应
+想观察记忆是否帮助了另一个 Agent，按[双 Agent 对照实验](docs/coding-memory-guide.md#5-自己用其他-agent-测试记忆效果)操作。
 
-| 论文创新点 | hermetic-dmsa 模块 |
-|---|---|
-| Provenance-aware Memory DAG | `dmsa.memory.*` |
-| 可微 Memory Schema（requires_grad） | `dmsa.memory.layer` + `dmsa.types` |
-| SGA 文本梯度聚合 | `dmsa.gradient.*`（6 个文件）|
-| Tool-Use 反向传播 | `dmsa.toolbp.*`（5 个文件）|
-| Differentiated L/S Memory | 通过 PMD `requires_grad` 默认值 |
+## 当前边界
 
-详见 [`docs/paper-mapping.md`](docs/paper-mapping.md)。
+- 尚未验证官方评测端点、完整 300 实例或约 18 亿 Token 规模。
+- Dense 是有上限的 scope 内扫描，默认最多 10,000 个切片，不是大规模 ANN 检索。
+- RSI 改进的是开发集检索策略，不修改代码/模型权重；注册表中的策略不会自动加载到 HTTP 服务。
+- HTTP 仅支持文本，`options` 只接受空数组；`/v1/runs`、新版 MCP 桥和可视化管理台未实现。
+- API key 授权访问整个服务，`user_id` 是检索分区而非独立用户认证。多 Agent 共用项目时，由可信调用端固定 scope。
+- PMD 仍需本地安装；旧 MemoryLayer 的持久化 SQLite 快照回滚会显式拒绝。
 
-## 开发
+## 文档导航
 
-```bash
-make ci          # ruff + mypy + pytest 严格模式
-make test        # 只跑测试
-make docs        # 构建文档站
-make release     # 触发 PyPI 发布（需要先 git tag v*.*.*）
-```
+- [技术方案、运行、比赛接口与 Agent 实验](docs/coding-memory-guide.md)
+- [公开 API](docs/api-reference.md)
+- [Coding Memory 算法](docs/algorithms/coding-memory.md) · [离线 RSI](docs/algorithms/offline-rsi.md)
+- [论文映射](docs/paper-mapping.md) · [原有 MCP 集成资料](docs/integrations.md)
+- [开发规范](AGENTS.md) · [变更记录](CHANGELOG.md)
 
-## License
-
-Apache 2.0. 详见 [LICENSE](LICENSE) 与 [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md)。
+Apache 2.0，见 [LICENSE](LICENSE) 与 [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md)。

@@ -1,5 +1,7 @@
 ## Coding Memory HTTP API (development subset)
 
+需要完整请求/响应、运行命令与 Agent 测试步骤，请先看 [Coding Memory 实操指南](coding-memory-guide.md)。
+
 `from dmsa.mcp_server.http import create_app` 提供无认证 `GET
 /health` 与受认证 `POST /add`、`POST /search`。认证接受 Bearer、Token 或
 `X-Api-Key`。调用方注入的 CodingMemory 归调用方管理；HTTP CLI 管理自己的实例。
