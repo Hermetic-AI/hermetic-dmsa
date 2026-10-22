@@ -1,6 +1,6 @@
-"""MCP server CLI 入口（`dmsa-mcp-server`）。
+"""MCP server CLI 入口(`dmsa-mcp-server`).
 
-用法：
+用法:
 
     dmsa-mcp-server                          # 内存模式
     dmsa-mcp-server --storage ~/.dmsa/db.sqlite  # 持久化
@@ -11,21 +11,22 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import sys
 
 from dmsa.config import load_config
 from dmsa.errors import DMSAError
 from dmsa.mcp_server.server import MCPServer
 from dmsa.memory import MemoryLayer
+from dmsa.observability import get_logger
+from dmsa.types import MemoryLayerConfig
 
-__all__ = ["main", "build_parser"]
+__all__ = ["build_parser", "main"]
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """构造 CLI 参数解析器。"""
+    """构造 CLI 参数解析器."""
     parser = argparse.ArgumentParser(
         prog="dmsa-mcp-server",
-        description="hermetic-dmsa MCP server — expose 7 tools to LLM agents",
+        description="hermetic-dmsa MCP server - expose 7 tools to LLM agents",
     )
     parser.add_argument(
         "--storage",
@@ -48,7 +49,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """CLI 入口函数。"""
+    """CLI 入口函数."""
     from dataclasses import replace
 
     parser = build_parser()
@@ -59,24 +60,29 @@ def main(argv: list[str] | None = None) -> int:
         if args.storage:
             config = replace(config, storage=type(config.storage)(path=args.storage))
     except DMSAError as exc:
-        print(f"config error: {exc.message}", file=sys.stderr)
+        get_logger(__name__).error("config error", error=exc.message)
         return 1
 
-    # 创建 memory layer：embedder 由 config.embedder.backend 决定
-    # （hash = 零依赖默认；openai = 真实语义，需 pip install hermetic-dmsa[llm]）。
-    # hash 后端的维度用 --embedder-dim 覆盖。
+    # 创建 memory layer:embedder 由 config.embedder.backend 决定
+    # (hash = 零依赖默认;openai = 真实语义,需 pip install hermetic-dmsa[llm]).
+    # hash 后端的维度用 --embedder-dim 覆盖.
     from dmsa.gradient import build_embedder
 
-    embedder_cfg = replace(
-        config.embedder, dim=args.embedder_dim
-    ) if config.embedder.backend == "hash" else config.embedder
+    embedder_cfg = (
+        replace(config.embedder, dim=args.embedder_dim)
+        if config.embedder.backend == "hash"
+        else config.embedder
+    )
     try:
-        layer = MemoryLayer(embedder=build_embedder(embedder_cfg))
+        layer = MemoryLayer(
+            config=MemoryLayerConfig(storage_path=config.storage.path),
+            embedder=build_embedder(embedder_cfg),
+        )
     except DMSAError as exc:
-        print(f"embedder error: {exc.message}", file=sys.stderr)
+        get_logger(__name__).error("memory setup error", error=exc.message)
         return 1
 
-    # fusion 后端：默认 static（零依赖）；fusion_backend="llm" 时换 LLMFusion
+    # fusion 后端:默认 static(零依赖);fusion_backend="llm" 时换 LLMFusion
     if config.gradient.fusion_backend == "llm":
         from dmsa.gradient import LLMFusion, SGAAggregator
         from dmsa.mcp_server.handlers.feedback import set_aggregator
@@ -93,7 +99,7 @@ def main(argv: list[str] | None = None) -> int:
                 )
             )
         except DMSAError as exc:
-            print(f"llm fusion error: {exc.message}", file=sys.stderr)
+            get_logger(__name__).error("llm fusion error", error=exc.message)
             return 1
 
     # 创建 server
@@ -104,7 +110,7 @@ def main(argv: list[str] | None = None) -> int:
     except KeyboardInterrupt:
         return 0
     except Exception as exc:  # pragma: no cover
-        print(f"server error: {exc}", file=sys.stderr)
+        get_logger(__name__).error("server error", error=str(exc))
         return 2
     return 0
 

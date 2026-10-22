@@ -56,6 +56,10 @@
 
 ## 实验数据来源
 
+MemoryLayer 生命周期过滤的实现说明见
+[active-memory-retrieval](algorithms/active-memory-retrieval.md)。它保留 PMD 原有评分，
+仅在候选和 lineage 扩展结果进入排序前剔除非 ACTIVE/已过期节点，不改变论文算法结论。
+
 论文中的所有 benchmark 数据都可通过 `dmsa` 公共 API 复现：
 
 ```python

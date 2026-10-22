@@ -1,0 +1,80 @@
+"""记忆层职责模块."""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
+
+from pmd import (
+    CreatorEdge,
+)
+from pmd import (
+    MemoryNode as PMDMemoryNode,
+)
+
+from dmsa.errors import (
+    MemoryLayerError,
+)
+from dmsa.memory._base import MemoryState
+from dmsa.observability import get_logger, get_registry
+from dmsa.types import MemoryLayerConfig
+
+if TYPE_CHECKING:
+    from dmsa.memory.layer import MemoryLayer
+
+_logger = get_logger("dmsa.memory.layer")
+_metrics = get_registry()
+
+
+class MemorySerialization(MemoryState):
+    """提供记忆层的独立职责实现."""
+
+    def export_state(self) -> dict[str, Any]:
+        """把当前 MemoryLayer 状态导出为 dict."""
+        with self._lock:
+            nodes = {nid: n.model_dump(mode="json") for nid, n in self._dag._nodes.items()}
+            edges = {
+                f"{e.from_node_id}|{e.to_node_id}|{e.edge_type.value}": e.model_dump(mode="json")
+                for e in self._dag._edges.values()
+            }
+            return {
+                "schema": "dmsa.memory.v1",
+                "config": {
+                    "storage_path": self._config.storage_path,
+                    "auto_snapshot": self._config.auto_snapshot,
+                },
+                "nodes": nodes,
+                "edges": edges,
+            }
+
+    @classmethod
+    def import_state(cls, payload: dict[str, Any]) -> MemoryLayer:
+        """从 dict 恢复 MemoryLayer."""
+        if payload.get("schema") != "dmsa.memory.v1":
+            raise MemoryLayerError(
+                f"unsupported schema: {payload.get('schema')!r}",
+                details={"schema": payload.get("schema")},
+            )
+        config_data = payload.get("config", {})
+        config = MemoryLayerConfig(
+            storage_path=config_data.get("storage_path", ":memory:"),
+            auto_snapshot=config_data.get("auto_snapshot", False),
+        )
+        from pmd.store.memory_store import InMemoryStore
+
+        from dmsa.memory.layer import MemoryLayer
+
+        # 导入是独立快照, 不重新打开 payload 中记录的原始数据库.
+        layer = MemoryLayer(config=config, store=InMemoryStore())
+        # 重建 nodes(不重建 edges - node.parents 字段已含 edges,PMD 会自动添加)
+        for node_data in payload.get("nodes", {}).values():
+            node = PMDMemoryNode.model_validate(node_data)
+            # 把 to_node_id 填上(dump 时是空)
+            parents = node.parents
+            for edge in parents:
+                if not edge.to_node_id:
+                    edge_dict = edge.model_dump()
+                    edge_dict["to_node_id"] = node.id
+                    edge = CreatorEdge.model_validate(edge_dict)
+            node_with_edges = node.model_copy(update={"parents": parents})
+            layer._dag.add_node(node_with_edges, compute_embedding=False)
+        return layer
