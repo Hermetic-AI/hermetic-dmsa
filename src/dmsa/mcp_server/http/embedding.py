@@ -12,24 +12,24 @@ class TextEmbeddingV4:
     """将 OpenAI 协议 client 转为 CodingMemory Embedder 接口。"""
     name = "text-embedding-v4"
     fingerprint = name
-    dim: int
-
     def __init__(self, client: Any, dimension: int = 1536) -> None:
         """绑定预配置 client 与向量维度。"""
-        if dimension <= 0:
+        if type(dimension) is not int or dimension <= 0:
             raise ConfigError("embedding dimension must be positive")
         self.client = client
         self.dimension = dimension
-        self.dim = dimension
 
     def embed_batch(self, texts: Sequence[str]) -> Sequence[Sequence[float]]:
         """请求真实模型向量并检查返回维度。"""
         try:
-            response = self.client.embeddings.create(model=self.name, input=list(texts))
-            vectors = [list(item.embedding) for item in response.data]
+            response = self.client.embeddings.create(
+                model=self.name, input=list(texts), dimensions=self.dimension
+            )
+            items = sorted(response.data, key=lambda item: item.index)
+            vectors = [list(item.embedding) for item in items]
         except Exception as exc:
             raise ConfigError("text embedding request failed") from exc
-        if any(len(vector) != self.dimension for vector in vectors):
+        if len(vectors) != len(texts) or any(len(vector) != self.dimension for vector in vectors):
             raise ConfigError("text embedding dimension mismatch")
         return vectors
 
