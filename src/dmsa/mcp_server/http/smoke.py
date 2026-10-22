@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from http.client import HTTPException
 from typing import Any
 from urllib.error import URLError
 from urllib.parse import urlsplit
@@ -23,11 +24,11 @@ def _request(base_url: str, path: str, api_key: str, body: dict[str, Any] | None
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     payload = None if body is None else json.dumps(body).encode("utf-8")
-    request = Request(base_url.rstrip("/") + path, data=payload, headers=headers)
     try:
+        request = Request(base_url.rstrip("/") + path, data=payload, headers=headers)
         with urlopen(request, timeout=10) as response:
             return json.loads(response.read())
-    except (URLError, OSError, ValueError) as exc:
+    except (HTTPException, URLError, OSError, ValueError) as exc:
         raise TransportError("smoke request failed") from exc
 
 

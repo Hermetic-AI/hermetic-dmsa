@@ -25,3 +25,12 @@ def test_standalone_workflows_do_not_install_sibling_checkout() -> None:
     root = Path(__file__).resolve().parents[1]
     for workflow in (root / ".github" / "workflows").glob("*.yml"):
         assert "analysis/pmd_skeleton" not in workflow.read_text(encoding="utf-8")
+
+
+def test_security_audits_the_deployed_dependency_lock() -> None:
+    root = Path(__file__).resolve().parents[1]
+    workflow = (root / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    security = workflow.split("  security:\n", 1)[1].split("  container:\n", 1)[0]
+    assert "grep -v '^pmd==' deploy/requirements.lock" in security
+    assert "pip-audit --strict --require-hashes --disable-pip" in security
+    assert "/tmp/dmsa-audit-requirements.lock" in security
