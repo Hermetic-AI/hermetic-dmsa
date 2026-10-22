@@ -13,6 +13,14 @@ scope 编码为独立全文词项，与查询联合匹配后才应用候选上�
 稳定的 reciprocal-rank fusion (RRF) 合并；选取阶段按会话限额和字符预算控制重复。
 证据文本包含 request/session/message 及字符 offset 引用。
 
+确定性 `ExperienceCard` 视图从每个候选来源切片中抽取显式标记的症状、根因、动作、失败尝试、
+验证和条件行，并保留消息序号、原始字符区间、路径、符号与 outcome。它不调用模型、不执行文本中
+出现的命令，也不把推断或自述升级为事实；没有显式槽位时保留完整来源切片作为唯一 evidence。
+该视图在当前版本按需重建，没有独立数据库副本。检索以很小的确定性 prior 区分显式 bug/feature
+问题，并只在查询明确询问失败经验时提升 failed-attempt 卡片；prior 不会创建召回候选或覆盖 RRF，
+因此尚不能解决语义相似但根因相反、版本冲突或大语料候选池漏召回。这是可解释的首个切片级基线，
+不是完整的 episode/card 检索架构，必须由四档噪声代理集和实际 Coding Agent 对照实验验证。
+
 可选 embedder 通过 `embed_batch` 注入，必须提供稳定 fingerprint/name 与 dimension；
 所有向量必须数量、维度正确、有限且非零。当前 dense 实现为进程内、scope 内精确扫描
 参考实现，最多接受 policy 中 `dense_scan_limit` 个 chunk；超过时显式报错。向量持久保存在

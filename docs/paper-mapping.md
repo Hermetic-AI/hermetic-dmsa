@@ -22,6 +22,10 @@
 | `src/dmsa/memory/lineage_query.py` | §3.5 lineage 检索 API |
 | `src/dmsa/memory/serialization.py` | §3.6 序列化 |
 
+Coding Memory 的 `dmsa.memory.coding.experiences` 是面向开源工程记忆赛道的研究原型，
+不属于上述论文已验证的 DAG/SGA 创新点。它从切片原文形成保守的 facet 视图并作轻量检索先验；
+其效果须由代理噪声基准和真实 Coding Agent 配对任务测量，不应作为论文结果引用。
+
 ### L2 梯度聚合（论文 §5 SGA）
 
 | `src/dmsa/gradient/policy.py`, `replay.py` | 离线检索策略提案与配对门禁；工程评测闭环，不声称论文实验结果或 coding 成功率 | 
