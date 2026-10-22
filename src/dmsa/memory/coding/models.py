@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Protocol, cast
 
 from dmsa.errors import MemoryLayerError
 
@@ -34,6 +34,13 @@ def require_text(value: object, field: str) -> None:
         value.encode("utf-8")
     except UnicodeError as exc:
         raise CodingMemoryValidationError(f"{field} must be valid Unicode") from exc
+
+
+def require_identifier(value: object, field: str) -> None:
+    """校验参与稳定标识或 scope 的文本字段。."""
+    require_text(value, field)
+    if "\0" in cast(str, value):
+        raise CodingMemoryValidationError(f"{field} must not contain NUL")
 
 
 @dataclass(frozen=True)

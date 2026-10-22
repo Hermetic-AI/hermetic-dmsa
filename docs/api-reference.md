@@ -38,12 +38,12 @@ CLI 的 `--storage` 和全局配置 `storage.path` 使用同样的接线。
 
 ## 快照与序列化
 
-`snapshot` / `rollback` / `list_versions` 继续委托 PMD。
+`snapshot` / `list_versions` 继续委托 PMD。SQLite 上的 `rollback` 会抛出
+`MemoryLayerError`：当前 PMD rollback 只恢复 live DAG，不能安全回写持久数据库；
+可通过 detached export/import 恢复某个内存快照。
 `export_state` / `import_state` 保留 `dmsa.memory.v1` 格式。
 导入产生独立内存副本，保留 payload 的配置元数据，但不会重新打开并修改其原始数据库。
 
-当前 PMD 的 SQLite rollback 只恢复 live DAG，不删除快照后新增的持久化行；
-重新打开数据库可能重新加载这些行。调用方不应将其视为 durable rollback。
 PMD 目前是 workspace sibling 路径依赖，本页不承诺独立公开安装。
 
 ## CodingMemory

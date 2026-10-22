@@ -16,6 +16,7 @@ from dmsa.memory.coding.models import (
     SearchHit,
     SearchPolicy,
     SourceMessage,
+    require_identifier,
     require_text,
 )
 from dmsa.memory.coding.retrieval import CodingRetriever
@@ -75,9 +76,9 @@ class CodingMemory:
         self, request_id: str, user_id: str, session_id: str, messages: Iterable[SourceMessage]
     ) -> int:
         """幂等写入完整请求并返回 scope revision。."""
-        require_text(request_id, "request_id")
-        require_text(user_id, "user_id")
-        require_text(session_id, "session_id")
+        require_identifier(request_id, "request_id")
+        require_identifier(user_id, "user_id")
+        require_identifier(session_id, "session_id")
         parsed = self._messages(messages)
         payload_hash = self.store.payload_hash(session_id, parsed)
         with self._operation():
@@ -96,7 +97,7 @@ class CodingMemory:
     ) -> list[SearchHit]:
         """检索 scope 内证据; policy 可用于无副作用配对回放。."""
         require_text(query, "query")
-        require_text(user_id, "user_id")
+        require_identifier(user_id, "user_id")
         selected = policy or self.policy
         if not isinstance(selected, SearchPolicy):
             raise CodingMemoryValidationError("policy must be SearchPolicy")
@@ -120,7 +121,7 @@ class CodingMemory:
         except TypeError as exc:
             raise CodingMemoryValidationError("user_ids must be iterable") from exc
         for user_id in users:
-            require_text(user_id, "user_id")
+            require_identifier(user_id, "user_id")
         with self._operation():
             return self.store.corpus_state(users)
 

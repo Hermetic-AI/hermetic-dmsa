@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import textwrap
 from pathlib import Path
 
@@ -12,12 +11,11 @@ from dmsa.config import (
     DMSAConfig,
     EmbedderConfig,
     GradientConfig,
-    MCPServerConfig,
     StorageConfig,
     load_config,
     merge_config,
 )
-from dmsa.errors import ConfigError, InvalidConfigValueError
+from dmsa.errors import InvalidConfigValueError
 
 
 def test_default_config_valid() -> None:
@@ -35,34 +33,39 @@ def test_explicit_config_takes_precedence() -> None:
 
 def test_invalid_dim_raises() -> None:
     """embedder.dim <= 0 抛错。"""
+    config = DMSAConfig(embedder=EmbedderConfig(dim=0))
     with pytest.raises(InvalidConfigValueError) as exc_info:
-        config = DMSAConfig(embedder=EmbedderConfig(dim=0))
         config.validate()
     assert "embedder.dim" in str(exc_info.value)
 
 
+def test_invalid_feedback_limit_names_field() -> None:
+    """非正反馈长度错误指向准确配置字段。"""
+    from dataclasses import replace
+
+    config = load_config()
+    with pytest.raises(InvalidConfigValueError, match=r"mcp_server.max_feedback_length"):
+        replace(config, mcp_server=replace(config.mcp_server, max_feedback_length=0)).validate()
+
+
 def test_invalid_conflict_threshold_raises() -> None:
     """conflict_threshold 必须在 [0, 1]。"""
+    config = DMSAConfig(gradient=GradientConfig(conflict_threshold=1.5))
     with pytest.raises(InvalidConfigValueError):
-        config = DMSAConfig(
-            gradient=GradientConfig(conflict_threshold=1.5)
-        )
         config.validate()
 
 
 def test_invalid_min_cluster_size_raises() -> None:
     """min_cluster_size 必须 >= 1。"""
+    config = DMSAConfig(gradient=GradientConfig(min_cluster_size=0))
     with pytest.raises(InvalidConfigValueError):
-        config = DMSAConfig(gradient=GradientConfig(min_cluster_size=0))
         config.validate()
 
 
 def test_invalid_storage_path_raises() -> None:
     """storage.path 的父目录不存在时抛错。"""
+    config = DMSAConfig(storage=StorageConfig(path="/nonexistent/dir/file.db"))
     with pytest.raises(InvalidConfigValueError):
-        config = DMSAConfig(
-            storage=StorageConfig(path="/nonexistent/dir/file.db")
-        )
         config.validate()
 
 

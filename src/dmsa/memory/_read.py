@@ -20,6 +20,7 @@ from pmd import (
 
 from dmsa.errors import (
     LineageNotFoundError,
+    MemoryLayerError,
 )
 from dmsa.memory._base import MemoryState
 from dmsa.memory.lineage_query import (
@@ -147,8 +148,14 @@ class MemoryRead(MemoryState):
             return self._dag.snapshot(description=description, tag=tag)
 
     def rollback(self, version_id: str) -> None:
-        """回滚到指定版本."""
+        """回滚到指定版本; SQLite 当前不支持可持久恢复的回滚."""
         with self._lock:
+            from pmd.store.sqlite_store import SQLiteStore
+
+            if isinstance(self._store, SQLiteStore):
+                raise MemoryLayerError(
+                    "rollback is unsupported for SQLite storage; export a detached snapshot instead"
+                )
             self._dag.rollback(version_id)
 
     def list_versions(self) -> list[VersionSnapshot]:

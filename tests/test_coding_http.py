@@ -67,6 +67,50 @@ def test_http_restart_concurrency_and_sanitized_body(tmp_path) -> None:
     reopened.close()
 
 
+def test_http_rejects_nontext_content_parts_without_echo(tmp_path) -> None:
+    """拒绝图像部件并用固定错误体响应。"""
+    memory = CodingMemory(tmp_path / "parts.sqlite", None)
+    client = TestClient(create_app(memory, "key"))
+    response = client.post(
+        "/add",
+        json={"request_id": "r", "user_id": "u", "session_id": "s", "messages": [
+            {"role": "user", "content": [{"type": "image", "text": "private"}]}
+        ]},
+        headers={"X-Api-Key": "key"},
+    )
+    assert response.status_code == 422
+    assert response.json() == {"detail": "invalid request"}
+    assert "private" not in response.text
+    memory.close()
+
+
+def test_http_auth_non_ascii_config_and_surfaces_provider_failure(tmp_path) -> None:
+    """非 ASCII 配置密钥不触发比较异常, dense provider 故障返回通用 503。"""
+    class BrokenEmbedder:
+        dimension = 2
+        fingerprint = "broken"
+
+        def embed_batch(self, texts):
+            raise RuntimeError("provider secret")
+
+    memory = CodingMemory(tmp_path / "provider.sqlite", BrokenEmbedder())
+    client = TestClient(create_app(memory, "key"))
+    unicode_client = TestClient(create_app(memory, "密钥"))
+    assert unicode_client.post(
+        "/search", json={"query": "x", "user_id": "u"}, headers={"X-Api-Key": "ascii"}
+    ).status_code == 401
+    response = client.post(
+        "/add",
+        json={"request_id": "r", "user_id": "u", "session_id": "s", "messages": [
+            {"role": "user", "content": "source"}
+        ]},
+        headers={"X-Api-Key": "key"},
+    )
+    assert response.status_code == 503
+    assert "provider secret" not in response.text
+    memory.close()
+
+
 def test_cli_validates_key_before_server_start(monkeypatch) -> None:
     """缺服务密钥时不构造数据库或启动 server。"""
     monkeypatch.delenv("DMSA_MEMORY_API_KEY", raising=False)

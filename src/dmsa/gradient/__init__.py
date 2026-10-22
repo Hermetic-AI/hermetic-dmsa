@@ -17,7 +17,8 @@ from dmsa.gradient.policy import (
     RetrievalPolicy,
     propose_policy,
 )
-from dmsa.gradient.replay import PolicyRegistry, ReplayCase, ReplayReport, gate, run_replay
+from dmsa.gradient.replay import PolicyRegistry, gate, run_replay
+from dmsa.gradient.replay_models import ReplayCase, ReplayReport
 from dmsa.gradient.routing import ConditionalBranchSynthesizer, ConflictDetector
 from dmsa.gradient.samples import (
     FeedbackSignal,

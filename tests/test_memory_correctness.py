@@ -96,14 +96,28 @@ def test_sqlite_snapshot_serialization_is_detached(tmp_path) -> None:
     path = tmp_path / "db.sqlite"
     layer = MemoryLayer(config=MemoryLayerConfig(storage_path=str(path)))
     node = layer.add_memory(content="original", prompt_context=_context())
+    layer.add_memory(content="child", prompt_context=_context(), parents=[node.id])
+    layer = MemoryLayer(config=MemoryLayerConfig(storage_path=str(path)))
+    child = next(item for item in layer.dag._nodes.values() if item.content == "child")
     snapshot = layer.snapshot()
     layer.add_memory(content="later", prompt_context=_context())
-    layer.rollback(snapshot.version_id)
+    with pytest.raises(MemoryLayerError, match="unsupported for SQLite"):
+        layer.rollback(snapshot.version_id)
     restored = MemoryLayer.import_state(layer.export_state())
-    assert len(restored) == 1
+    assert len(restored) == 3
     assert restored.get_node(node.id).content == "original"
+    assert restored.get_ancestors(child.id, depth=1)[0].id == node.id
     restored.add_memory(content="detached", prompt_context=_context())
-    assert len(MemoryLayer(config=MemoryLayerConfig(storage_path=str(path)))) == 2
+    assert len(MemoryLayer(config=MemoryLayerConfig(storage_path=str(path)))) == 3
+
+
+def test_detached_import_restores_parent_edges() -> None:
+    """导入导出恢复父边, 且 rollback 只作用于内存 store。"""
+    layer = MemoryLayer()
+    parent = layer.add_memory(content="parent", prompt_context=_context())
+    child = layer.add_memory(content="child", prompt_context=_context(), parents=[parent.id])
+    restored = MemoryLayer.import_state(layer.export_state())
+    assert restored.get_ancestors(child.id, depth=1)[0].id == parent.id
 
 
 def test_cli_passes_storage_config(tmp_path, monkeypatch) -> None:

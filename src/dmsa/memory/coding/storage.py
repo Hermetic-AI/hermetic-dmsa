@@ -17,6 +17,7 @@ from dmsa.memory.coding.models import (
     SourceMessage,
 )
 from dmsa.memory.coding.schema import initialize, scope_token
+from dmsa.memory.coding.storage_queries import neighbors
 
 
 class CodingStore:
@@ -31,10 +32,14 @@ class CodingStore:
             self.path = str(expanded)
         self.lock = threading.RLock()
         self.db = sqlite3.connect(self.path, timeout=30, check_same_thread=False)
-        self.db.row_factory = sqlite3.Row
-        self.db.execute("PRAGMA busy_timeout=30000")
-        self.db.execute("PRAGMA journal_mode=WAL")
-        initialize(self.db)
+        try:
+            self.db.row_factory = sqlite3.Row
+            self.db.execute("PRAGMA busy_timeout=30000")
+            self.db.execute("PRAGMA journal_mode=WAL")
+            initialize(self.db)
+        except Exception:
+            self.db.close()
+            raise
 
     @staticmethod
     def payload_hash(session_id: str, messages: tuple[SourceMessage, ...]) -> str:
@@ -77,6 +82,7 @@ class CodingStore:
         """事务性发布 request、原文、切片、向量和 revision."""
         digest = self.payload_hash(session_id, messages)
         with self.lock, self.db:
+            self.db.execute("BEGIN IMMEDIATE")
             old = self.existing_request(request_id, user_id, digest)
             if old is not None:
                 return old
@@ -129,9 +135,9 @@ class CodingStore:
                         scope_token(user_id),
                     ),
                 )
-                for term in set(chunk.paths) | set(chunk.symbols):
+                for term in {value.lower() for value in (*chunk.paths, *chunk.symbols)}:
                     self.db.execute(
-                        "INSERT INTO exact_terms VALUES(?,?,?)", (user_id, cid, term.lower())
+                        "INSERT INTO exact_terms VALUES(?,?,?)", (user_id, cid, term)
                     )
                 if fingerprint is not None:
                     vector = vectors[chunk_index]
@@ -148,6 +154,10 @@ class CodingStore:
                 "INSERT INTO scope_epochs VALUES(?,?) ON CONFLICT(user_id) "
                 "DO UPDATE SET epoch=excluded.epoch",
                 (user_id, revision),
+            )
+            self.db.execute(
+                "UPDATE metadata SET value=CAST(value AS INTEGER)+1 "
+                "WHERE key='corpus_generation'"
             )
             return revision
 
@@ -224,6 +234,10 @@ class CodingStore:
             )
         )
 
+    def neighbors(self, user_id: str, chunk_id: str, window: int) -> list[sqlite3.Row]:
+        """读取同 request/session/message 的有限相邻切片."""
+        return neighbors(self.db, user_id, chunk_id, window)
+
     def revision(self, user_id: str) -> int:
         """读取 scope 当前 revision."""
         row = self.db.execute(
@@ -231,40 +245,22 @@ class CodingStore:
         ).fetchone()
         return int(row[0]) if row else 0
 
-    def neighbors(self, user_id: str, chunk_id: str, window: int) -> list[sqlite3.Row]:
-        """读取同 request/session/message 的有限相邻切片."""
-        if window <= 0:
-            return []
-        hit = self.db.execute(
-            "SELECT request_id, session_id, message_id, ordinal FROM chunks "
-            "WHERE user_id=? AND id=?",
-            (user_id, chunk_id),
-        ).fetchone()
-        if not hit:
-            return []
-        ordinal = int(hit["ordinal"])
-        return list(
-            self.db.execute(
-                "SELECT * FROM chunks WHERE user_id=? AND request_id=? "
-                "AND session_id=? AND message_id=? AND ordinal BETWEEN ? AND ? "
-                "ORDER BY ordinal, id",
-                (
-                    user_id,
-                    hit["request_id"],
-                    hit["session_id"],
-                    hit["message_id"],
-                    ordinal - window,
-                    ordinal + window,
-                ),
-            )
-        )
-
     def corpus_state(self, user_ids: Iterable[str]) -> CorpusState:
         """用一个只读事务读取指定 scope revisions 快照."""
         scopes = tuple(sorted(set(user_ids)))
         with self.lock:
             self.db.execute("BEGIN")
             try:
+                corpus_id = str(
+                    self.db.execute(
+                        "SELECT value FROM metadata WHERE key='corpus_id'"
+                    ).fetchone()[0]
+                )
+                generation = int(
+                    self.db.execute(
+                        "SELECT value FROM metadata WHERE key='corpus_generation'"
+                    ).fetchone()[0]
+                )
                 values = []
                 for user_id in scopes:
                     row = self.db.execute(
@@ -275,13 +271,14 @@ class CodingStore:
             except sqlite3.Error:
                 self.db.rollback()
                 raise
-        payload = json.dumps(values, separators=(",", ":")).encode()
+        payload = json.dumps([corpus_id, generation, values], separators=(",", ":")).encode()
         fingerprint = hashlib.sha256(payload).hexdigest()
         return CorpusState(sum(rev for _, rev in values), fingerprint)
 
     def delete_scope(self, user_id: str) -> None:
         """事务性删除 scope 原文、向量、索引和 revision."""
         with self.lock, self.db:
+            self.db.execute("BEGIN IMMEDIATE")
             current = self.revision(user_id)
             epoch = current + 1
             for table in ("chunks", "vectors", "exact_terms", "messages", "requests", "corpus"):
@@ -290,6 +287,10 @@ class CodingStore:
                 "INSERT INTO scope_epochs VALUES(?,?) ON CONFLICT(user_id) "
                 "DO UPDATE SET epoch=excluded.epoch",
                 (user_id, epoch),
+            )
+            self.db.execute(
+                "UPDATE metadata SET value=CAST(value AS INTEGER)+1 "
+                "WHERE key='corpus_generation'"
             )
 
     def close(self) -> None:

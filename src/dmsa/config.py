@@ -1,4 +1,5 @@
-"""配置管理（PD7）。
+# ruff: noqa: RUF002, RUF003
+"""配置管理（PD7）。.
 
 配置来源优先级（高→低）：
     1. 显式传入 :class:`DMSAConfig` 实例
@@ -45,7 +46,7 @@ _ENV_PREFIX = "DMSA_"
 
 
 def _load_from_toml(path: Path) -> dict[str, object]:
-    """从 TOML 文件加载配置。"""
+    """从 TOML 文件加载配置。."""
     try:
         with path.open("rb") as fp:
             data = cast(dict[str, object], tomllib.load(fp))
@@ -60,7 +61,7 @@ def _load_from_toml(path: Path) -> dict[str, object]:
 
 
 def _load_from_env() -> dict[str, object]:
-    """从环境变量加载配置（仅覆盖存在环境变量的字段）。
+    """从环境变量加载配置（仅覆盖存在环境变量的字段）。.
 
     命名约定：DMSA_<SECTION>__<KEY>（section 与 key 之间用 **双下划线** 分隔；
     单下划线保留作为字段名一部分，如 ``MIN_CLUSTER_SIZE`` -> ``min_cluster_size``）。
@@ -84,7 +85,7 @@ def _load_from_env() -> dict[str, object]:
 
 
 def _coerce_env_value(value: str) -> object:
-    """把环境变量字符串转成合适的 Python 值。"""
+    """把环境变量字符串转成合适的 Python 值。."""
     lower = value.lower()
     if lower in ("true", "yes", "1"):
         return True
@@ -102,12 +103,14 @@ def _coerce_env_value(value: str) -> object:
 
 
 def _deep_merge(base: dict[str, object], override: dict[str, object]) -> dict[str, object]:
-    """递归合并 dict；override 优先。"""
+    """递归合并 dict；override 优先。."""
     result = dict(base)
     for key, value in override.items():
         previous = result.get(key)
         if isinstance(previous, dict) and isinstance(value, dict):
-            result[key] = _deep_merge(cast(dict[str, object], previous), cast(dict[str, object], value))
+            result[key] = _deep_merge(
+                cast(dict[str, object], previous), cast(dict[str, object], value)
+            )
         else:
             result[key] = value
     return result
@@ -118,7 +121,7 @@ def load_config(
     explicit: DMSAConfig | None = None,
     search_paths: tuple[str, ...] = _CONFIG_SEARCH_PATHS,
 ) -> DMSAConfig:
-    """按优先级加载配置并返回 :class:`DMSAConfig` 实例。
+    """按优先级加载配置并返回 :class:`DMSAConfig` 实例。.
 
     优先级：explicit > 环境变量 > TOML 文件（按 search_paths 顺序）> 默认值。
     """
@@ -143,7 +146,7 @@ def load_config(
 
 
 def _dict_to_config(data: dict[str, object]) -> DMSAConfig:
-    """把 dict 转成 :class:`DMSAConfig`；忽略未知字段。"""
+    """把 dict 转成 :class:`DMSAConfig`；忽略未知字段。."""
     storage_data = data.get("storage", {})
     embedder_data = data.get("embedder", {})
     gradient_data = data.get("gradient", {})
@@ -194,7 +197,7 @@ def _dict_to_config(data: dict[str, object]) -> DMSAConfig:
 
 
 def merge_config(base: DMSAConfig, **overrides: object) -> DMSAConfig:
-    """基于现有 config 创建新 config（覆盖指定字段）。
+    """基于现有 config 创建新 config（覆盖指定字段）。.
 
     用法：
         new_cfg = merge_config(cfg, **{"embedder.dim": 768})

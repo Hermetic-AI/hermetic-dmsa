@@ -1,5 +1,6 @@
 """Coding memory 数据库结构与旧 FTS 存储迁移."""
 
+import secrets
 import sqlite3
 
 
@@ -47,6 +48,7 @@ CREATE TABLE IF NOT EXISTS requests(
             CREATE TABLE IF NOT EXISTS corpus(user_id TEXT PRIMARY KEY, revision INTEGER NOT NULL);
             CREATE TABLE IF NOT EXISTS scope_epochs(
               user_id TEXT PRIMARY KEY, epoch INTEGER NOT NULL);
+            CREATE TABLE IF NOT EXISTS metadata(key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
 
 
@@ -63,6 +65,18 @@ def initialize(db: sqlite3.Connection) -> None:
         )
     try:
         db.executescript("BEGIN IMMEDIATE;" + prefix + SCHEMA + suffix + "COMMIT;")
+        db.execute(
+            "INSERT OR IGNORE INTO metadata(key, value) VALUES('corpus_id', ?)",
+            (secrets.token_hex(32),),
+        )
+        db.execute(
+            "INSERT OR IGNORE INTO scope_epochs(user_id, epoch) "
+            "SELECT user_id, revision FROM corpus"
+        )
+        db.execute(
+            "INSERT OR IGNORE INTO metadata(key, value) VALUES('corpus_generation', '0')"
+        )
+        db.commit()
     except sqlite3.Error:
         db.rollback()
         raise

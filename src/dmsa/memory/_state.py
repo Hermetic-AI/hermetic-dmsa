@@ -66,15 +66,36 @@ class MemorySerialization(MemoryState):
         # 导入是独立快照, 不重新打开 payload 中记录的原始数据库.
         layer = MemoryLayer(config=config, store=InMemoryStore())
         # 重建 nodes(不重建 edges - node.parents 字段已含 edges,PMD 会自动添加)
-        for node_data in payload.get("nodes", {}).values():
+        nodes = payload.get("nodes", {})
+        exported_edges = list(payload.get("edges", {}).values())
+        parent_edges: dict[str, list[CreatorEdge]] = {}
+        for edge_data in exported_edges:
+            edge = CreatorEdge.model_validate(edge_data)
+            parent_edges.setdefault(edge.to_node_id, []).append(edge)
+        ordered_ids: list[str] = []
+        pending = set(nodes)
+        while pending:
+            ready = sorted(
+                node_id
+                for node_id in pending
+                if all(edge.from_node_id not in pending for edge in parent_edges.get(node_id, []))
+            )
+            if not ready:
+                raise MemoryLayerError("exported memory graph contains a cycle")
+            ordered_ids.extend(ready)
+            pending.difference_update(ready)
+        for node_id in ordered_ids:
+            node_data = nodes[node_id]
             node = PMDMemoryNode.model_validate(node_data)
-            # 把 to_node_id 填上(dump 时是空)
-            parents = node.parents
+            # SQLite reopen 的 DAG 边存于 _edges, 节点本身可能不含 parents。
+            parents = parent_edges.get(node.id, list(node.parents))
+            normalized = []
             for edge in parents:
                 if not edge.to_node_id:
                     edge_dict = edge.model_dump()
                     edge_dict["to_node_id"] = node.id
                     edge = CreatorEdge.model_validate(edge_dict)
-            node_with_edges = node.model_copy(update={"parents": parents})
+                normalized.append(edge)
+            node_with_edges = node.model_copy(update={"parents": normalized})
             layer._dag.add_node(node_with_edges, compute_embedding=False)
         return layer

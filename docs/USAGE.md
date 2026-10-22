@@ -637,5 +637,5 @@ profile uses deterministic hash embeddings and is suitable for protocol and
 workflow development only. The `competition` profile requires
 `DMSA_EMBEDDING_BASE_URL`, `DMSA_EMBEDDING_API_KEY`,
 `DMSA_EMBEDDING_MODEL=text-embedding-v4`; it sends paid/provider requests only
-when clients call `/add`. No provider is assumed to offer this model by
+when clients call `/add` or `/search`. No provider is assumed to offer this model by
 default. See `docs/api-reference.md` for request schemas and response shapes.

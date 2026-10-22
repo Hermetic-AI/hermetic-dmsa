@@ -21,7 +21,9 @@ SQLite 中并绑定 fingerprint 与 dimension，不同 embedder 不会误读旧�
 
 `corpus_state(user_ids)` 在单个 SQLite 只读事务中读取排序后的 scope epoch，并返回
 `CorpusState(revision, fingerprint)`。epoch 在删除后继续单调递增，避免清空再写入产生 ABA
-指纹。离线配对回放应在两臂前后读取相同 scope 集合并确认 fingerprint 未变化。policy 的
+指纹。稳定的随机 corpus ID 也纳入 fingerprint，区分 revision 相同但来源不同的独立数据库；
+全局 generation 同样纳入 fingerprint，因为 FTS5 的 BM25 全局统计会受其他 scope 写入影响。
+离线配对回放应在两臂前后读取相同 scope 集合并确认 fingerprint 未变化。policy 的
 `max_chars` 与 `max_tokens` 均是输出预算，权重必须有限且有界。
 
 `estimate_tokens(text)` 当前按 UTF-8 字节计数，作为文本 token 的保守预算代理，覆盖中文、

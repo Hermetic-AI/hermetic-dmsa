@@ -18,6 +18,11 @@ ERROR_RE = re.compile(
     re.I | re.M,
 )
 PASS_RE = re.compile(r"(?:\bpassed\b|\bPASS\b|tests? passed)", re.I)
+NEGATED_PASS_RE = re.compile(
+    r"\b(?:not|never|did(?:n't| not)|hasn't|have not|wasn't|were not)\s+"
+    r"(?:\w+\s+){0,2}pass(?:ed)?\b",
+    re.I,
+)
 
 
 @dataclass(frozen=True)
@@ -49,7 +54,11 @@ def extract(messages: tuple[SourceMessage, ...]) -> list[Chunk]:
             outcome = "unknown"
             if ERROR_RE.search(text):
                 outcome = "observed_failure"
-            elif PASS_RE.search(text) and message.role.lower() in {"tool", "system"}:
+            elif (
+                PASS_RE.search(text)
+                and not NEGATED_PASS_RE.search(text)
+                and message.role.lower() in {"tool", "system"}
+            ):
                 outcome = "reported_success"
             chunks.append(
                 Chunk(

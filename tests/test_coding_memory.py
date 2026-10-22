@@ -66,6 +66,82 @@ def test_outcome_negative_example_and_long_content(tmp_path) -> None:
     memory.close()
 
 
+def test_exact_terms_deduplicate_after_case_normalization(tmp_path) -> None:
+    """大小写不同的同词项写入单条精确索引记录。"""
+    memory = CodingMemory(tmp_path / "case-terms.db")
+    memory.add("r", "u", "s", [SourceMessage("user", "Foo foo")])
+    assert memory.search("foo", "u", 2)
+    count = memory.store.db.execute(
+        "SELECT count(*) FROM exact_terms WHERE term='foo'"
+    ).fetchone()[0]
+    assert count == 1
+    memory.close()
+
+
+def test_corpus_fingerprint_distinguishes_databases_and_survives_reopen(tmp_path) -> None:
+    """来源版本相同的数据库仍有独立指纹, 重开后指纹稳定。"""
+    first_path, second_path = tmp_path / "first.db", tmp_path / "second.db"
+    first = CodingMemory(first_path, None)
+    second = CodingMemory(second_path, None)
+    first.add("r", "u", "s", [SourceMessage("user", "source one")])
+    second.add("r", "u", "s", [SourceMessage("user", "source two")])
+    first_fingerprint = first.corpus_fingerprint(["u"])
+    assert first_fingerprint != second.corpus_fingerprint(["u"])
+    first.close()
+    second.close()
+    reopened = CodingMemory(first_path, None)
+    assert reopened.corpus_fingerprint(["u"]) == first_fingerprint
+    reopened.close()
+    reopened = CodingMemory(first_path, None)
+    assert reopened.corpus_fingerprint(["u"]) == first_fingerprint
+    reopened.close()
+
+
+def test_corpus_fingerprint_tracks_other_scope_mutations(tmp_path) -> None:
+    """全局 FTS 统计可能改变其他 scope 排序, 因此指纹包含全局 generation。"""
+    memory = CodingMemory(tmp_path / "global-generation.db", None)
+    memory.add("alice-1", "alice", "s", [SourceMessage("user", "alpha evidence")])
+    before = memory.corpus_fingerprint(["alice"])
+    memory.add("bob-1", "bob", "s", [SourceMessage("user", "unrelated corpus")])
+    assert memory.corpus_fingerprint(["alice"]) != before
+    memory.close()
+
+
+def test_independent_writers_serialize_revision_assignment(tmp_path) -> None:
+    """独立连接并发写入仍获得连续 revision, 同 key 重试幂等。"""
+    from concurrent.futures import ThreadPoolExecutor
+
+    path = tmp_path / "writers.db"
+    first, second = CodingMemory(path, None), CodingMemory(path, None)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        revisions = list(pool.map(
+            lambda args: args[0].add(args[1], "u", "s", [SourceMessage("user", args[1])]),
+            [(first, "a"), (second, "b")],
+        ))
+    assert sorted(revisions) == [1, 2]
+    assert first.add("a", "u", "s", [SourceMessage("user", "a")]) == 1
+    assert first.store.revision("u") == 2
+    first.close()
+    second.close()
+
+
+@pytest.mark.parametrize("field", ["request", "user", "session"])
+def test_identifiers_reject_nul_delimiter(field: str, tmp_path) -> None:
+    """稳定 ID 分隔符不允许出现在来源标识字段。"""
+    memory = CodingMemory(tmp_path / "nul.db", None)
+    values = {"request_id": "r", "user_id": "u", "session_id": "s"}
+    values[{"request": "request_id", "user": "user_id", "session": "session_id"}[field]] = "a\0b"
+    with pytest.raises(CodingMemoryValidationError, match="NUL"):
+        memory.add(**values, messages=[SourceMessage("user", "safe content")])
+    memory.close()
+
+
+def test_negated_test_success_remains_unknown() -> None:
+    """否定测试通过的描述不能标为成功。"""
+    chunks = extract((SourceMessage("tool", "tests not passed"),))
+    assert chunks[0].outcome == "unknown"
+
+
 def test_top_k_policy_override_and_delete(tmp_path) -> None:
     """边界参数有明确错误, 临时策略不修改实例, 删除彻底清空。"""
     memory = CodingMemory(tmp_path / "memory.db")

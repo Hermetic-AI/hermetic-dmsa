@@ -33,7 +33,7 @@ pip install -e '.[http]'
 
 ```bash
 # 开发模式仅用 sparse 检索，不生成语义向量
-set DMSA_MEMORY_API_KEY=dev-secret
+export DMSA_MEMORY_API_KEY=dev-secret
 dmsa-memory-http --profile sparse-dev --storage ./coding.sqlite3
 ```
 

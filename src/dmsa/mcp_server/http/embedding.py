@@ -25,7 +25,15 @@ class TextEmbeddingV4:
             response = self.client.embeddings.create(
                 model=self.name, input=list(texts), dimensions=self.dimension
             )
-            items = sorted(response.data, key=lambda item: item.index)
+            items = list(response.data)
+            indices = [item.index for item in items]
+            if (
+                len(items) != len(texts)
+                or any(type(index) is not int for index in indices)
+                or sorted(indices) != list(range(len(texts)))
+            ):
+                raise ValueError("embedding response indices are invalid")
+            items.sort(key=lambda item: item.index)
             vectors = [list(item.embedding) for item in items]
         except Exception as exc:
             raise ConfigError("text embedding request failed") from exc

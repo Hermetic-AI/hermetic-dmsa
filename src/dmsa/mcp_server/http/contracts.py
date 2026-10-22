@@ -22,7 +22,7 @@ class MessageContract(BaseModel):
             parts: list[str] = []
             for part in self.content:
                 if set(part) != {"type", "text"} or part.get("type") != "text":
-                    raise ValueError("only text content parts are supported")
+                    raise CodingMemoryValidationError("only text content parts are supported")
                 parts.append(part["text"])
             content = "".join(parts)
         return SourceMessage(self.role, content, self.timestamp)
