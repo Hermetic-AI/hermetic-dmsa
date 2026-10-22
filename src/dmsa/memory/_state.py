@@ -65,13 +65,18 @@ class MemorySerialization(MemoryState):
 
         # 导入是独立快照, 不重新打开 payload 中记录的原始数据库.
         layer = MemoryLayer(config=config, store=InMemoryStore())
-        # 重建 nodes(不重建 edges - node.parents 字段已含 edges,PMD 会自动添加)
+        # 节点优先使用独立 edge 清单, 兼容旧 payload 中仅有 node.parents 的格式.
         nodes = payload.get("nodes", {})
         exported_edges = list(payload.get("edges", {}).values())
         parent_edges: dict[str, list[CreatorEdge]] = {}
         for edge_data in exported_edges:
             edge = CreatorEdge.model_validate(edge_data)
             parent_edges.setdefault(edge.to_node_id, []).append(edge)
+        for node_id, node_data in nodes.items():
+            if node_id not in parent_edges:
+                node = PMDMemoryNode.model_validate(node_data)
+                if node.parents:
+                    parent_edges[node_id] = list(node.parents)
         ordered_ids: list[str] = []
         pending = set(nodes)
         while pending:

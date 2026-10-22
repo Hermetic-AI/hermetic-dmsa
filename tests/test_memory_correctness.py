@@ -120,6 +120,18 @@ def test_detached_import_restores_parent_edges() -> None:
     assert restored.get_ancestors(child.id, depth=1)[0].id == parent.id
 
 
+def test_import_legacy_parent_edges_in_reverse_node_order() -> None:
+    """旧格式只有 node.parents 且节点顺序反转时仍先恢复父节点。"""
+    layer = MemoryLayer()
+    parent = layer.add_memory(content="parent", prompt_context=_context())
+    child = layer.add_memory(content="child", prompt_context=_context(), parents=[parent.id])
+    payload = layer.export_state()
+    payload.pop("edges")
+    payload["nodes"] = dict(reversed(list(payload["nodes"].items())))
+    restored = MemoryLayer.import_state(payload)
+    assert restored.get_ancestors(child.id, depth=1)[0].id == parent.id
+
+
 def test_cli_passes_storage_config(tmp_path, monkeypatch) -> None:
     from dmsa.mcp_server import cli
 
