@@ -47,3 +47,19 @@ policy 可用于配对检索，不会修改实例默认策略。`delete_scope(us
 校验错误抛出 `CodingMemoryValidationError`。可选 embedder 要求 fingerprint/name、dimension
 和 `embed_batch(texts)`；向量与 fingerprint 一起持久化，scope 超出 policy 的
 `dense_scan_limit` 时 dense 检索拒绝运行。细节与适用边界见 `docs/algorithms/coding-memory.md`。
+`max_chars` 按 Python 字符长度计量，`max_tokens` 使用公开的
+`dmsa.memory.estimate_tokens` 确定性 UTF-8 字节预算代理，并非模型 tokenizer。SQLite 使用带 scope
+约束的索引与 FTS 结构；存储初始化会执行幂等 schema migration，旧数据库可直接打开。
+
+## Offline RSI
+
+`dmsa.gradient.RetrievalPolicy` wraps an immutable validated `SearchPolicy`.
+`run_replay(memory, baseline, candidate, cases, ..., development_only=True)`
+performs paired real retrieval against the same unchanged corpus snapshot and
+binds report hashes to policies, cases, corpus and fixed budgets. `gate(report)`
+rejects empty, mismatched, regressing or budget-invalid evidence and requires a
+per-case recall improvement. `PolicyRegistry.register` accepts only reports
+executed in the current process through `run_replay`; it atomically persists
+candidates and decisions. `rollback(version)` selects a previously accepted
+policy. This API is for development evidence; runtime feedback does not train
+or activate policies automatically.

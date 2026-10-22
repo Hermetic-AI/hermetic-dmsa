@@ -24,6 +24,8 @@
 
 ### L2 梯度聚合（论文 §5 SGA）
 
+| `src/dmsa/gradient/policy.py`, `replay.py` | 离线检索策略提案与配对门禁；工程评测闭环，不声称论文实验结果或 coding 成功率 | 
+
 | 文件 | 对应论文 |
 |---|---|
 | `src/dmsa/gradient/samples.py` | §5.1 GradientSample 数据结构 |

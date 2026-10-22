@@ -1,17 +1,4 @@
-"""L2 语义梯度聚合（SGA）。
-
-7 个模块：
-
-- :mod:`dmsa.gradient.samples` — GradientSample / FeedbackSignal 数据类
-- :mod:`dmsa.gradient.embedding` — 零依赖哈希嵌入 + Protocol
-- :mod:`dmsa.gradient.clustering` — HDBSCAN 接口 + fallback 单链接
-- :mod:`dmsa.gradient.fusion` — StaticFusion 默认 + Protocol
-- :mod:`dmsa.gradient.llm` — OpenAI 嵌入器 + LLM 融合器（可选依赖 openai）
-- :mod:`dmsa.gradient.routing` — 冲突检测 + 条件分支
-- :mod:`dmsa.gradient.aggregator` — :class:`SGAAggregator` 编排
-
-依赖规则：本层只 import L1 + pmd，不 import L3/L4。
-"""
+"""L2 semantic gradient aggregation and offline policy evaluation."""
 
 from __future__ import annotations
 
@@ -24,6 +11,13 @@ from dmsa.gradient.clustering import (
 from dmsa.gradient.embedding import EmbedderProtocol, HashEmbedder
 from dmsa.gradient.fusion import FusionClient, RuleBasedFusion, StaticFusion
 from dmsa.gradient.llm import LLMFusion, OpenAIEmbedder, build_embedder
+from dmsa.gradient.policy import (
+    FailureDiagnostic,
+    OfflineRSIError,
+    RetrievalPolicy,
+    propose_policy,
+)
+from dmsa.gradient.replay import PolicyRegistry, ReplayCase, ReplayReport, gate, run_replay
 from dmsa.gradient.routing import ConditionalBranchSynthesizer, ConflictDetector
 from dmsa.gradient.samples import (
     FeedbackSignal,
@@ -37,6 +31,7 @@ __all__ = [
     "ConditionalBranchSynthesizer",
     "ConflictDetector",
     "EmbedderProtocol",
+    "FailureDiagnostic",
     "FallbackSingleLinkBackend",
     "FeedbackSignal",
     "FusionClient",
@@ -44,11 +39,19 @@ __all__ = [
     "HDBSCANBackend",
     "HashEmbedder",
     "LLMFusion",
+    "OfflineRSIError",
     "OpenAIEmbedder",
+    "PolicyRegistry",
+    "ReplayCase",
+    "ReplayReport",
+    "RetrievalPolicy",
     "RuleBasedFusion",
     "SGAAggregator",
     "StaticFusion",
     "build_embedder",
+    "gate",
     "make_feedback",
     "make_sample",
+    "propose_policy",
+    "run_replay",
 ]
