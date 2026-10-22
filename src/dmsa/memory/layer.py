@@ -230,6 +230,63 @@ class MemoryLayer:
             return edge
 
     # ------------------------------------------------------------------
+    # 公共 API：梯度应用（v0.1 纯文本融合，不调 LLM）
+    # ------------------------------------------------------------------
+
+    def apply_text_gradient(
+        self,
+        *,
+        node_id: str,
+        gradient_text: str,
+        prompt_context: PMDPromptContext,
+    ) -> PMDMemoryNode:
+        """把一条文本梯度应用到记忆节点，生成 successor 节点。
+
+        v0.1 语义：新节点 content 为原 content 追加梯度指令；
+        ``parents=[node_id]`` 建立 lineage，可通过 snapshot/rollback 回滚。
+
+        Args:
+            node_id: 目标记忆节点 ULID。
+            gradient_text: SGA 融合后的文本梯度。
+            prompt_context: 本次应用操作的 prompt context。
+
+        Returns:
+            新生成的 successor 节点。
+
+        Raises:
+            LineageNotFoundError: 目标节点不存在。
+            MemoryLayerError: 目标节点 ``requires_grad=False``（硬边界，
+                声明了不参与反向传播）。
+        """
+        with start_span("dmsa.apply_text_gradient", node_id=node_id):
+            node = self.get_node(node_id)
+            if not node.requires_grad:
+                raise MemoryLayerError(
+                    f"node {node_id!r} has requires_grad=False (hard boundary)",
+                    details={
+                        "node_id": node_id,
+                        "hint": "recreate the node with requires_grad=True",
+                    },
+                )
+            merged = f"{node.content}\n\n[gradient-update] {gradient_text}"
+            successor = self.add_memory(
+                content=merged,
+                prompt_context=prompt_context,
+                parents=[node_id],
+                requires_grad=node.requires_grad,
+                grad_learning_rate=node.grad_learning_rate,
+                tags=[*node.tags, "gradient-update"],
+                importance=node.importance,
+            )
+            _metrics.counter("dmsa.apply_text_gradient").inc()
+            _logger.info(
+                "text gradient applied",
+                node_id=node_id,
+                successor_id=successor.id,
+            )
+            return successor
+
+    # ------------------------------------------------------------------
     # 公共 API：读取
     # ------------------------------------------------------------------
 
@@ -471,6 +528,27 @@ class MemoryLayer:
     def embedder(self) -> Any:
         """嵌入器。"""
         return self._embedder
+
+    def attach_embedder(self, embedder: Any) -> None:
+        """构造后注入嵌入器（供 L4 server 做默认接线）。
+
+        Args:
+            embedder: 任何实现 ``embed(str) -> list[float]`` 且带 ``name``
+                属性的对象（如 :class:`dmsa.gradient.HashEmbedder`）。
+
+        Raises:
+            MemoryLayerError: embedder 为 None 或缺少 ``embed`` 方法。
+        """
+        if embedder is None or not callable(getattr(embedder, "embed", None)):
+            raise MemoryLayerError(
+                "attach_embedder requires an object with an embed() method",
+                details={"embedder": type(embedder).__name__},
+            )
+        with self._lock:
+            self._embedder = embedder
+            # PMD 的 DAG 在构造时缓存了 embedder，需同步替换
+            self._dag._embedder = embedder
+        _logger.info("embedder attached", embedder=getattr(embedder, "name", "?"))
 
     def __len__(self) -> int:
         with self._lock:

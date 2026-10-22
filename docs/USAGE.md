@@ -121,7 +121,7 @@ PYTHONPATH=src python examples/01_quickstart_mcp.py
 | `dmsa_add_memory` | 写入带 creator_prompt_id 的 memory |
 | `dmsa_query_lineage` | 查询某个节点的祖先/后代链 |
 | `dmsa_feedback` | 用户反馈 → 触发 SGA 聚合 |
-| `dmsa_apply_gradient` | 把梯度应用到 prompt 或 schema |
+| `dmsa_apply_gradient` | 把梯度写回可微记忆节点（v0.1 支持 prompt 目标；schema 目标请直接用 `dmsa.toolbp.ToolBPEngine`） |
 | `dmsa_tool_call` | 包装工具调用 + 自动生成 critique |
 | `dmsa_snapshot` | 打点版本（可回滚） |
 | `dmsa_search` | lineage-aware 检索 |
@@ -579,6 +579,37 @@ sqlite3 ~/.hermetic-dmsa/db.sqlite "VACUUM"
 pip install hermetic-dmsa[clustering]  # 装 HDBSCAN
 # 设置环境变量：
 export DMSA_GRADIENT__CLUSTERING_BACKEND=hdbscan
+```
+
+### Q6: 默认的嵌入/融合没有语义，怎么接真实 LLM？
+
+默认 `HashEmbedder`（哈希嵌入）+ `StaticFusion`（文本拼接）是零依赖参考实现，
+适合测试和演示，但**没有真实语义**。生产环境切换到真实 LLM 后端：
+
+```bash
+pip install "hermetic-dmsa[llm]"   # 装 openai
+export OPENAI_API_KEY=sk-...
+
+# 真实语义嵌入（检索、聚类都会变准）
+export DMSA_EMBEDDER__BACKEND=openai
+# 可选：换模型 / 走 OpenAI 兼容 endpoint（vLLM、代理等）
+export DMSA_EMBEDDER__MODEL=text-embedding-3-small
+
+# LLM 融合（fused_text 由 LLM 改写，去重 + 消解措辞冲突）
+export DMSA_GRADIENT__FUSION_BACKEND=llm
+export DMSA_GRADIENT__LLM_CHAT_MODEL=gpt-4o-mini
+export DMSA_GRADIENT__LLM_BASE_URL=          # 可选，兼容 endpoint
+```
+
+代码层面（不走 MCP server 时）直接注入：
+
+```python
+from dmsa.gradient import LLMFusion, OpenAIEmbedder, SGAAggregator, StaticFusion
+
+aggregator = SGAAggregator(
+    embedder=OpenAIEmbedder(),
+    fusion=LLMFusion(fallback=StaticFusion()),  # API 挂了就降级拼接
+)
 ```
 
 ---

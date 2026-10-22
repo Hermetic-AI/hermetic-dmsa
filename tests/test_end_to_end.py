@@ -211,3 +211,81 @@ def test_e2e_multiple_feedbacks_aggregate(e2e_server: MCPServer) -> None:
             2,
         )
         assert "error" not in r2
+
+
+def test_e2e_feedback_apply_gradient(e2e_server: MCPServer) -> None:
+    """完整闭环：write → feedback → apply_gradient → successor 可追溯、可回滚。"""
+    # 1. 写入一条可微记忆
+    r1 = _call(
+        e2e_server,
+        "tools/call",
+        {
+            "name": "dmsa_add_memory",
+            "arguments": {
+                "content": "answer with conclusion first",
+                "requires_grad": True,
+                "grad_learning_rate": 0.1,
+            },
+        },
+        1,
+    )
+    node_id = r1["result"]["node"]["id"]
+
+    # 2. apply 前打点快照
+    r_snap = _call(
+        e2e_server,
+        "tools/call",
+        {"name": "dmsa_snapshot", "arguments": {"tag": "before-apply"}},
+        2,
+    )
+    version_id = r_snap["result"]["version_id"]
+
+    # 3. 反馈 → SGA 聚合
+    r3 = _call(
+        e2e_server,
+        "tools/call",
+        {
+            "name": "dmsa_feedback",
+            "arguments": {
+                "target_node_id": node_id,
+                "feedback_text": "answers are too long, be more concise",
+            },
+        },
+        3,
+    )
+    fb = r3["result"]
+
+    # 4. 应用梯度 → 生成 successor
+    r4 = _call(
+        e2e_server,
+        "tools/call",
+        {
+            "name": "dmsa_apply_gradient",
+            "arguments": {
+                "feedback_id": fb["feedback_id"],
+                "cluster_id": fb["fused_gradients"][0]["cluster_id"],
+                "target_id": node_id,
+            },
+        },
+        4,
+    )
+    assert "error" not in r4
+    assert r4["result"]["applied"] is True
+    successor_id = r4["result"]["new_node_id"]
+
+    # 5. successor 融合原内容 + 梯度，lineage 可追溯
+    r5 = _call(
+        e2e_server,
+        "tools/call",
+        {
+            "name": "dmsa_query_lineage",
+            "arguments": {"node_id": successor_id, "direction": "UP"},
+        },
+        5,
+    )
+    assert node_id in {n["id"] for n in r5["result"]["nodes"]}
+
+    # 6. 回滚到 apply 前的快照，successor 消失
+    e2e_server._memory.rollback(version_id)
+    assert successor_id not in e2e_server._memory
+    assert node_id in e2e_server._memory

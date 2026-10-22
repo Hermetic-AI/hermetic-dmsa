@@ -330,8 +330,52 @@ def test_dmsa_search_tool(server: MCPServer) -> None:
     assert r["result"]["count"] >= 1
 
 
+def _add_gradable_node(server: MCPServer, request_id: int = 90) -> str:
+    """写入一个 requires_grad=True 的节点，返回 node_id。"""
+    r = server.process_request_sync(
+        {
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+                "name": "dmsa_add_memory",
+                "arguments": {
+                    "content": "be concise in answers",
+                    "requires_grad": True,
+                    "grad_learning_rate": 0.1,
+                },
+            },
+            "id": request_id,
+        }
+    )
+    assert "error" not in r, f"got error: {r.get('error')}"
+    return r["result"]["node"]["id"]
+
+
+def _send_feedback(server: MCPServer, node_id: str, request_id: int = 91) -> dict:
+    """对节点发一条反馈，返回 result dict。"""
+    r = server.process_request_sync(
+        {
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+                "name": "dmsa_feedback",
+                "arguments": {
+                    "target_node_id": node_id,
+                    "feedback_text": "too verbose, be shorter",
+                },
+            },
+            "id": request_id,
+        }
+    )
+    assert "error" not in r, f"got error: {r.get('error')}"
+    return r["result"]
+
+
 def test_dmsa_apply_gradient_tool(server: MCPServer) -> None:
-    """dmsa_apply_gradient 简化版返回 applied=True。"""
+    """dmsa_apply_gradient 真正把梯度写回 DAG，生成 successor 节点。"""
+    node_id = _add_gradable_node(server)
+    fb = _send_feedback(server, node_id)
+    cluster_id = fb["fused_gradients"][0]["cluster_id"]
     r = server.process_request_sync(
         {
             "jsonrpc": "2.0",
@@ -339,16 +383,115 @@ def test_dmsa_apply_gradient_tool(server: MCPServer) -> None:
             "params": {
                 "name": "dmsa_apply_gradient",
                 "arguments": {
-                    "feedback_id": "fb-x",
-                    "cluster_id": 0,
+                    "feedback_id": fb["feedback_id"],
+                    "cluster_id": cluster_id,
                     "target_type": "prompt",
-                    "target_id": "some-prompt-id",
+                    "target_id": node_id,
                 },
             },
             "id": 70,
         }
     )
+    assert "error" not in r, f"got error: {r.get('error')}"
     assert r["result"]["applied"] is True
+    assert r["result"]["new_node_id"]
+    # successor 的 lineage 可追溯回原节点
+    r2 = server.process_request_sync(
+        {
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+                "name": "dmsa_query_lineage",
+                "arguments": {
+                    "node_id": r["result"]["new_node_id"],
+                    "direction": "UP",
+                },
+            },
+            "id": 71,
+        }
+    )
+    ancestor_ids = {n["id"] for n in r2["result"]["nodes"]}
+    assert node_id in ancestor_ids
+
+
+def test_dmsa_apply_gradient_unknown_feedback_id(server: MCPServer) -> None:
+    """未知 feedback_id 返回工具执行错误。"""
+    node_id = _add_gradable_node(server)
+    r = server.process_request_sync(
+        {
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+                "name": "dmsa_apply_gradient",
+                "arguments": {
+                    "feedback_id": "fb-never-happened",
+                    "cluster_id": 0,
+                    "target_id": node_id,
+                },
+            },
+            "id": 72,
+        }
+    )
+    assert r["error"]["code"] == JsonRpcErrorCode.TOOL_EXECUTION_ERROR.value
+
+
+def test_dmsa_apply_gradient_rejects_frozen_node(server: MCPServer) -> None:
+    """requires_grad=False 的节点拒绝应用梯度。"""
+    r1 = server.process_request_sync(
+        {
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+                "name": "dmsa_add_memory",
+                "arguments": {"content": "frozen fact"},
+            },
+            "id": 73,
+        }
+    )
+    node_id = r1["result"]["node"]["id"]
+    fb = _send_feedback(server, node_id, request_id=74)
+    r = server.process_request_sync(
+        {
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+                "name": "dmsa_apply_gradient",
+                "arguments": {
+                    "feedback_id": fb["feedback_id"],
+                    "cluster_id": fb["fused_gradients"][0]["cluster_id"],
+                    "target_id": node_id,
+                },
+            },
+            "id": 75,
+        }
+    )
+    assert r["error"]["code"] == JsonRpcErrorCode.TOOL_EXECUTION_ERROR.value
+
+
+def test_dmsa_search_works_without_explicit_embedder() -> None:
+    """不注入 embedder 构造的 server 也能用 dmsa_search（自动挂 HashEmbedder）。"""
+    server = MCPServer(memory_layer=MemoryLayer())
+    server.process_request_sync(
+        {
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+                "name": "dmsa_add_memory",
+                "arguments": {"content": "user prefers dark mode"},
+            },
+            "id": 76,
+        }
+    )
+    r = server.process_request_sync(
+        {
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {"name": "dmsa_search", "arguments": {"query": "dark mode"}},
+            "id": 77,
+        }
+    )
+    assert "error" not in r, f"got error: {r.get('error')}"
+    assert r["result"]["count"] >= 1
 
 
 def test_unknown_tool_returns_tool_not_found(server: MCPServer) -> None:
@@ -386,3 +529,36 @@ def test_all_7_tools_registered() -> None:
 
 # 抑制 unused import warning
 _ = (TOOL_ADD_MEMORY, TOOL_FEEDBACK, TOOL_SNAPSHOT)
+
+
+def test_set_aggregator_injects_custom_fusion(server: MCPServer) -> None:
+    """set_aggregator 注入自定义 aggregator 后，dmsa_feedback 走新后端。"""
+    from dmsa.gradient import RuleBasedFusion, SGAAggregator
+    from dmsa.mcp_server.handlers import feedback as feedback_module
+
+    original = feedback_module._aggregator
+    try:
+        feedback_module.set_aggregator(
+            SGAAggregator(fusion=RuleBasedFusion())
+        )
+        node_id = _add_gradable_node(server, request_id=95)
+        r = server.process_request_sync(
+            {
+                "jsonrpc": "2.0",
+                "method": "tools/call",
+                "params": {
+                    "name": "dmsa_feedback",
+                    "arguments": {
+                        "target_node_id": node_id,
+                        "feedback_text": "should be shorter",
+                    },
+                },
+                "id": 96,
+            }
+        )
+        assert "error" not in r, f"got error: {r.get('error')}"
+        # RuleBasedFusion 的输出带 severity 标签，与 StaticFusion 格式不同
+        fused_text = r["result"]["fused_gradients"][0]["fused_text"]
+        assert "sev=" in fused_text
+    finally:
+        feedback_module.set_aggregator(original)

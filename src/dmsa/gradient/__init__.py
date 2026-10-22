@@ -1,11 +1,12 @@
 """L2 语义梯度聚合（SGA）。
 
-6 个模块：
+7 个模块：
 
 - :mod:`dmsa.gradient.samples` — GradientSample / FeedbackSignal 数据类
 - :mod:`dmsa.gradient.embedding` — 零依赖哈希嵌入 + Protocol
 - :mod:`dmsa.gradient.clustering` — HDBSCAN 接口 + fallback 单链接
 - :mod:`dmsa.gradient.fusion` — StaticFusion 默认 + Protocol
+- :mod:`dmsa.gradient.llm` — OpenAI 嵌入器 + LLM 融合器（可选依赖 openai）
 - :mod:`dmsa.gradient.routing` — 冲突检测 + 条件分支
 - :mod:`dmsa.gradient.aggregator` — :class:`SGAAggregator` 编排
 
@@ -20,9 +21,10 @@ from dmsa.gradient.clustering import (
     FallbackSingleLinkBackend,
     HDBSCANBackend,
 )
-from dmsa.gradient.embedding import HashEmbedder, EmbedderProtocol
+from dmsa.gradient.embedding import EmbedderProtocol, HashEmbedder
 from dmsa.gradient.fusion import FusionClient, RuleBasedFusion, StaticFusion
-from dmsa.gradient.routing import ConflictDetector, ConditionalBranchSynthesizer
+from dmsa.gradient.llm import LLMFusion, OpenAIEmbedder, build_embedder
+from dmsa.gradient.routing import ConditionalBranchSynthesizer, ConflictDetector
 from dmsa.gradient.samples import (
     FeedbackSignal,
     GradientSample,
@@ -31,19 +33,22 @@ from dmsa.gradient.samples import (
 )
 
 __all__ = [
-    "SGAAggregator",
     "ClusteringBackend",
+    "ConditionalBranchSynthesizer",
+    "ConflictDetector",
+    "EmbedderProtocol",
     "FallbackSingleLinkBackend",
+    "FeedbackSignal",
+    "FusionClient",
+    "GradientSample",
     "HDBSCANBackend",
     "HashEmbedder",
-    "EmbedderProtocol",
-    "FusionClient",
-    "StaticFusion",
+    "LLMFusion",
+    "OpenAIEmbedder",
     "RuleBasedFusion",
-    "ConflictDetector",
-    "ConditionalBranchSynthesizer",
-    "GradientSample",
-    "FeedbackSignal",
-    "make_sample",
+    "SGAAggregator",
+    "StaticFusion",
+    "build_embedder",
     "make_feedback",
+    "make_sample",
 ]

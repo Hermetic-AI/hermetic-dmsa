@@ -28,6 +28,7 @@
 |---|---|
 | `src/dmsa/gradient/samples.py` | §5.1 GradientSample 数据结构 |
 | `src/dmsa/gradient/embedding.py` | §5.2 嵌入编码（v1 用哈希 fallback，v2 用 sentence-transformer） |
+| `src/dmsa/gradient/llm.py` | §5.2 真实嵌入（OpenAIEmbedder）+ §5.4 真实 LLM 融合（LLMFusion，可选依赖 openai） |
 | `src/dmsa/gradient/clustering.py` | §5.3 HDBSCAN 密度聚类 + 单链接 fallback |
 | `src/dmsa/gradient/fusion.py` | §5.4 LLM 融合（v1 StaticFusion / RuleBasedFusion，v2 接真实 LLM） |
 | `src/dmsa/gradient/routing.py` | §5.5 冲突检测 + 条件分支生成 |

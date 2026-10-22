@@ -347,3 +347,87 @@ def test_lineage_aware_search_with_embedder() -> None:
 
     results = layer.lineage_aware_search("dark mode preference", k=2, depth=2)
     assert len(results) >= 1
+
+
+# ============================================================================
+# attach_embedder（构造后注入）
+# ============================================================================
+
+
+def test_attach_embedder_enables_search() -> None:
+    """无 embedder 创建的 layer，attach 后检索可用。"""
+    layer = MemoryLayer()
+    layer.attach_embedder(_StubEmbedder())
+    ctx = create_prompt_context(system_prompt="x")
+    layer.add_memory(content="user prefers dark mode", prompt_context=ctx)
+    results = layer.lineage_aware_search("dark mode", k=1)
+    assert len(results) == 1
+
+
+def test_attach_embedder_rejects_none() -> None:
+    """attach None 抛 :class:`MemoryLayerError`。"""
+    layer = MemoryLayer()
+    with pytest.raises(MemoryLayerError):
+        layer.attach_embedder(None)
+
+
+def test_attach_embedder_rejects_object_without_embed() -> None:
+    """缺少 embed() 方法的对象抛 :class:`MemoryLayerError`。"""
+    layer = MemoryLayer()
+    with pytest.raises(MemoryLayerError):
+        layer.attach_embedder(object())
+
+
+# ============================================================================
+# apply_text_gradient（v0.1 文本融合）
+# ============================================================================
+
+
+def test_apply_text_gradient_creates_successor() -> None:
+    """requires_grad=True 的节点应用梯度后生成带 lineage 的 successor。"""
+    layer = MemoryLayer()
+    ctx = create_prompt_context(system_prompt="x")
+    node = layer.add_memory(
+        content="be concise",
+        prompt_context=ctx,
+        requires_grad=True,
+        grad_learning_rate=0.1,
+    )
+    successor = layer.apply_text_gradient(
+        node_id=node.id,
+        gradient_text="too verbose, be shorter",
+        prompt_context=ctx,
+    )
+    # successor 融合原内容 + 梯度指令
+    assert "be concise" in successor.content
+    assert "too verbose, be shorter" in successor.content
+    assert "gradient-update" in successor.tags
+    assert successor.requires_grad is True
+    # lineage 可追溯：successor 的祖先包含原节点
+    ancestors = layer.get_ancestors(successor.id)
+    assert any(n.id == node.id for n in ancestors)
+
+
+def test_apply_text_gradient_rejects_frozen_node() -> None:
+    """requires_grad=False 的节点抛 :class:`MemoryLayerError`（硬边界）。"""
+    layer = MemoryLayer()
+    ctx = create_prompt_context(system_prompt="x")
+    node = layer.add_memory(content="frozen fact", prompt_context=ctx)
+    with pytest.raises(MemoryLayerError):
+        layer.apply_text_gradient(
+            node_id=node.id,
+            gradient_text="change this",
+            prompt_context=ctx,
+        )
+
+
+def test_apply_text_gradient_unknown_node_raises() -> None:
+    """目标节点不存在抛 :class:`LineageNotFoundError`。"""
+    layer = MemoryLayer()
+    ctx = create_prompt_context(system_prompt="x")
+    with pytest.raises(LineageNotFoundError):
+        layer.apply_text_gradient(
+            node_id="no-such-node",
+            gradient_text="g",
+            prompt_context=ctx,
+        )

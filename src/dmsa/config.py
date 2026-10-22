@@ -13,9 +13,10 @@
 from __future__ import annotations
 
 import os
-import tomllib
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
+
+import tomllib
 
 from dmsa.errors import ConfigError, InvalidConfigValueError
 
@@ -76,6 +77,18 @@ class GradientConfig:
     max_samples: int = 10_000
     """单次聚合最大样本数（防 DoS）。"""
 
+    fusion_backend: str = "static"
+    """``"static"`` (零依赖拼接) / ``"rule-based"`` / ``"llm"`` (真实 LLM 融合)。"""
+
+    llm_chat_model: str = "gpt-4o-mini"
+    """``fusion_backend="llm"`` 时的 chat 模型名。"""
+
+    llm_base_url: str = ""
+    """OpenAI 兼容 endpoint；空 = 官方 API。"""
+
+    llm_api_key_env: str = "OPENAI_API_KEY"
+    """API key 环境变量名。"""
+
 
 @dataclass(frozen=True, slots=True)
 class MCPServerConfig:
@@ -121,6 +134,12 @@ class DMSAConfig:
             raise InvalidConfigValueError(
                 f"gradient.max_samples must be positive, got {self.gradient.max_samples}",
                 details={"field": "gradient.max_samples"},
+            )
+        if self.gradient.fusion_backend not in ("static", "rule-based", "llm"):
+            raise InvalidConfigValueError(
+                "gradient.fusion_backend must be static/rule-based/llm, "
+                f"got {self.gradient.fusion_backend!r}",
+                details={"field": "gradient.fusion_backend"},
             )
         if self.mcp_server.max_feedback_length <= 0:
             raise InvalidConfigValueError(
@@ -271,6 +290,10 @@ def _dict_to_config(data: dict[str, object]) -> DMSAConfig:
         min_cluster_size=int(gradient_data.get("min_cluster_size", 2)),
         conflict_threshold=float(gradient_data.get("conflict_threshold", 0.3)),
         max_samples=int(gradient_data.get("max_samples", 10_000)),
+        fusion_backend=str(gradient_data.get("fusion_backend", "static")),
+        llm_chat_model=str(gradient_data.get("llm_chat_model", "gpt-4o-mini")),
+        llm_base_url=str(gradient_data.get("llm_base_url", "")),
+        llm_api_key_env=str(gradient_data.get("llm_api_key_env", "OPENAI_API_KEY")),
     )
     mcp_server = MCPServerConfig(
         max_feedback_length=int(mcp_data.get("max_feedback_length", 100_000)),
@@ -308,10 +331,10 @@ def merge_config(base: DMSAConfig, **overrides: object) -> DMSAConfig:
 
 __all__ = [
     "DMSAConfig",
-    "StorageConfig",
     "EmbedderConfig",
     "GradientConfig",
     "MCPServerConfig",
+    "StorageConfig",
     "load_config",
     "merge_config",
     "replace",  # 重新导出，方便用户使用

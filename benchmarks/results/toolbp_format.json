@@ -1,0 +1,94 @@
+{
+  "benchmark": "toolbp_format",
+  "timestamp": 1786348284.2702155,
+  "config": {
+    "iterations": 5,
+    "queries": [
+      "北京明天的天气怎么样？",
+      "What is the weather in Shanghai the day after tomorrow?",
+      "深圳后天会下雨吗？",
+      "Weather in New York tomorrow, please.",
+      "杭州明天需要带伞吗？",
+      "Check the weather in London for the day after tomorrow."
+    ],
+    "today": "2026-08-10"
+  },
+  "prompt_only_rows": [
+    {
+      "iter": 1,
+      "error_rate": 0.8333333333333334,
+      "failures": 5,
+      "schema_version": 1
+    },
+    {
+      "iter": 2,
+      "error_rate": 0.8333333333333334,
+      "failures": 5,
+      "schema_version": 1
+    },
+    {
+      "iter": 3,
+      "error_rate": 1.0,
+      "failures": 6,
+      "schema_version": 1
+    },
+    {
+      "iter": 4,
+      "error_rate": 1.0,
+      "failures": 6,
+      "schema_version": 1
+    },
+    {
+      "iter": 5,
+      "error_rate": 0.8333333333333334,
+      "failures": 5,
+      "schema_version": 1
+    }
+  ],
+  "toolbp_rows": [
+    {
+      "iter": 1,
+      "error_rate": 0.6666666666666666,
+      "failures": 4,
+      "schema_version": 5
+    },
+    {
+      "iter": 2,
+      "error_rate": 0.16666666666666666,
+      "failures": 1,
+      "schema_version": 6
+    },
+    {
+      "iter": 3,
+      "error_rate": 0.3333333333333333,
+      "failures": 2,
+      "schema_version": 8
+    },
+    {
+      "iter": 4,
+      "error_rate": 0.16666666666666666,
+      "failures": 1,
+      "schema_version": 9
+    },
+    {
+      "iter": 5,
+      "error_rate": 0.16666666666666666,
+      "failures": 1,
+      "schema_version": 10
+    }
+  ],
+  "summary": {
+    "prompt_only": {
+      "mean_error_rate": 0.9,
+      "final_error_rate": 0.8333333333333334,
+      "chat_calls": 30
+    },
+    "toolbp": {
+      "mean_error_rate": 0.3,
+      "final_error_rate": 0.16666666666666666,
+      "final_schema_version": 10,
+      "chat_calls": 30
+    },
+    "error_rate_reduction": 0.6666666666666667
+  }
+}

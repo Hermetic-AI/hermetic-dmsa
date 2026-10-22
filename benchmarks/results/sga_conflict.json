@@ -1,0 +1,103 @@
+{
+  "benchmark": "sga_conflict",
+  "timestamp": 1786366084.5143163,
+  "config": {
+    "iterations": 6,
+    "quick_max_words": 40,
+    "deep_min_words": 300,
+    "chat_model": "qwen3.5-flash",
+    "embedding_model": "text-embedding-v3"
+  },
+  "baseline_rows": [
+    {
+      "iter": 1,
+      "prompt": "You are a helpful assistant. Answer every question in exactly 100 words — no more, no less.",
+      "sat_quick": 0.0,
+      "sat_deep": 0.0
+    },
+    {
+      "iter": 2,
+      "prompt": "You are a helpful assistant. Answer every question in exactly 100 words — no more, no less.\nAlways calibrate the depth and brevity of your response to match the user's specified inquiry style, ensuring conciseness for quick questions and thoroughness for deep-dive requests.",
+      "sat_quick": 0.0,
+      "sat_deep": 0.0
+    },
+    {
+      "iter": 3,
+      "prompt": "You are a helpful assistant. Answer every question in exactly 100 words — no more, no less.\nEvery answer must calibrate its length and detail level to match the user's explicit intent for either quick conciseness or deep-dive elaboration.",
+      "sat_quick": 0.0,
+      "sat_deep": 0.0
+    },
+    {
+      "iter": 4,
+      "prompt": "You are a helpful assistant. Answer every question in exactly 100 words — no more, no less.\nAlways calibrate the response length and depth to precisely match the user's explicit intent for either brevity or comprehensiveness. Every answer must provide exactly the level of detail required by the question's context without unnecessary verbosity or omission.",
+      "sat_quick": 0.0,
+      "sat_deep": 0.0
+    },
+    {
+      "iter": 5,
+      "prompt": "You are a helpful assistant. Answer every question in exactly 100 words — no more, no less.\nEvery response must strictly calibrate its depth and verbosity to match the specific inquiry type designated by the user. The output must consistently deliver the exact level of detail requested, avoiding excessive brevity or unnecessary elaboration.",
+      "sat_quick": 0.0,
+      "sat_deep": 0.0
+    },
+    {
+      "iter": 6,
+      "prompt": "You are a helpful assistant. Answer every question in exactly 100 words — no more, no less.\nAlways adjust your response length to match the question's tag, ensuring conciseness for quick inquiries and thorough elaboration for deep-dive requests.",
+      "sat_quick": 0.0,
+      "sat_deep": 0.0
+    }
+  ],
+  "sga_rows": [
+    {
+      "iter": 1,
+      "prompt": "You are a helpful assistant. Answer every question in exactly 100 words — no more, no less.",
+      "sat_quick": 0.0,
+      "sat_deep": 0.0
+    },
+    {
+      "iter": 2,
+      "prompt": "You are a helpful assistant. Evaluate the query for intent tags. If the question is marked [quick], provide concise, direct replies. If the question is marked [deep-dive], provide thorough, in-depth explanations. Ensure response length and detail level strictly align with these specific intent tags.",
+      "sat_quick": 1.0,
+      "sat_deep": 1.0
+    },
+    {
+      "iter": 3,
+      "prompt": "You are a helpful assistant. Evaluate the query for intent tags. If the question is marked [quick], provide concise, direct replies. If the question is marked [deep-dive], provide thorough, detailed explanations. Response length and depth must always align with the specific question tag.",
+      "sat_quick": 1.0,
+      "sat_deep": 1.0
+    }
+  ],
+  "sga_aggregation": [
+    {
+      "iter": 1,
+      "cluster_count": 1,
+      "conflicts": 0,
+      "branches": [
+        []
+      ]
+    },
+    {
+      "iter": 2,
+      "cluster_count": 1,
+      "conflicts": 0,
+      "branches": [
+        []
+      ]
+    }
+  ],
+  "summary": {
+    "baseline": {
+      "gap_stdev": 0.0,
+      "mean_gap_abs": 0.0,
+      "polarized_rounds": 0,
+      "converged_iter": null,
+      "chat_calls": 42
+    },
+    "sga": {
+      "gap_stdev": 0.0,
+      "mean_gap_abs": 0.0,
+      "polarized_rounds": 0,
+      "converged_iter": 2,
+      "chat_calls": 20
+    }
+  }
+}
