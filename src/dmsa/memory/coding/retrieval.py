@@ -1,0 +1,168 @@
+"""同 scope 精确、稀疏、可选 dense 召回与证据打包."""
+
+from __future__ import annotations
+
+import math
+import re
+import sqlite3
+from collections import defaultdict
+
+from dmsa.memory.coding.models import (
+    CodingMemoryValidationError,
+    DenseScopeTooLargeError,
+    Embedder,
+    SearchHit,
+    SearchPolicy,
+)
+from dmsa.memory.coding.storage import CodingStore
+
+
+def _cosine(left: tuple[float, ...], right: tuple[float, ...]) -> float:
+    """计算余弦相似度."""
+    dot = sum(a * b for a, b in zip(left, right, strict=True))
+    return dot / (math.sqrt(sum(a * a for a in left)) * math.sqrt(sum(b * b for b in right)))
+
+
+def _tokens(text: str) -> set[str]:
+    """产生预算统计及冗余比较用 token."""
+    return set(re.findall(r"[\w./-]+", text.lower()))
+
+
+class CodingRetriever:
+    """基于稳定 RRF 和确定性证据预算的检索器."""
+
+    def __init__(self, store: CodingStore, embedder: Embedder | None) -> None:
+        """初始化可选 dense 嵌入器."""
+        self.store = store
+        self.embedder = embedder
+        self.fingerprint = self._fingerprint(embedder) if embedder else None
+
+    @staticmethod
+    def _fingerprint(embedder: Embedder) -> str:
+        """验证并获取明确的模型指纹."""
+        fingerprint = getattr(embedder, "fingerprint", None) or getattr(embedder, "name", None)
+        dimension = getattr(embedder, "dimension", None)
+        if (
+            not isinstance(fingerprint, str)
+            or not fingerprint
+            or type(dimension) is not int
+            or dimension <= 0
+        ):
+            raise CodingMemoryValidationError(
+                "embedder requires fingerprint/name and positive dimension"
+            )
+        return fingerprint
+
+    def embed_new(self, texts: list[str]) -> list[tuple[float, ...]]:
+        """计算并校验批量向量."""
+        if self.embedder is None or not texts:
+            return []
+        values = self.embedder.embed_batch(texts)
+        if len(values) != len(texts):
+            raise CodingMemoryValidationError("embedder returned wrong vector count")
+        result = []
+        for vector in values:
+            try:
+                item = tuple(float(value) for value in vector)
+            except (TypeError, ValueError) as exc:
+                raise CodingMemoryValidationError("embedder returned nonnumeric vector") from exc
+            if (
+                len(item) != self.embedder.dimension
+                or not all(math.isfinite(value) for value in item)
+                or not any(item)
+            ):
+                raise CodingMemoryValidationError("embedder returned invalid vector")
+            result.append(item)
+        return result
+
+    @staticmethod
+    def _add_channel(ranks: dict[str, float], weight: float, rows: list[sqlite3.Row]) -> None:
+        """将单通道排名以 RRF 加入总分."""
+        if weight == 0:
+            return
+        for rank, row in enumerate(rows, 1):
+            ranks[str(row["id"])] += weight / (60 + rank)
+
+    def _pack(
+        self,
+        user_id: str,
+        ordered: list[str],
+        ranks: dict[str, float],
+        top_k: int,
+        policy: SearchPolicy,
+    ) -> list[SearchHit]:
+        """扩展邻居后按冗余、session 与字符/token 预算装包."""
+        expanded = list(ordered)
+        seen = set(expanded)
+        for cid in ordered:
+            for neighbor in self.store.neighbors(user_id, cid, policy.neighbor_window):
+                neighbor_id = str(neighbor["id"])
+                if neighbor_id not in seen:
+                    seen.add(neighbor_id)
+                    ranks[neighbor_id] = ranks[cid] * 0.5
+                    expanded.append(neighbor_id)
+        rows = self.store.rows_by_ids(user_id, tuple(expanded))
+        by_id = {str(row["id"]): row for row in rows}
+        expanded.sort(key=lambda cid: (-ranks[cid], cid))
+        selected: list[SearchHit] = []
+        sessions: dict[str, int] = defaultdict(int)
+        char_budget, token_budget = policy.max_chars, policy.max_tokens
+        token_sets: list[set[str]] = []
+        for cid in expanded:
+            row = by_id.get(cid)
+            if row is None:
+                continue
+            session = str(row["session_id"])
+            if sessions[session] >= policy.per_session_limit:
+                continue
+            source = (
+                f"[request={row['request_id']} session={session} message={row['message_id']} "
+                f"chars={row['start']}:{row['end']} role={row['role']} outcome={row['outcome']}]\n"
+            )
+            content = source + str(row["text"])
+            terms = _tokens(content)
+            if token_sets and any(
+                len(terms & existing) / max(1, len(terms | existing)) >= policy.redundancy_threshold
+                for existing in token_sets
+            ):
+                continue
+            size = len(re.findall(r"[\w./-]+", content))
+            if len(content) > char_budget or size > token_budget:
+                continue
+            selected.append(SearchHit(cid, content, ranks[cid]))
+            token_sets.append(terms)
+            sessions[session] += 1
+            char_budget -= len(content)
+            token_budget -= size
+            if len(selected) >= top_k or char_budget <= 0 or token_budget <= 0:
+                break
+        return selected
+
+    def search(self, query: str, user_id: str, top_k: int, policy: SearchPolicy) -> list[SearchHit]:
+        """融合 scope 内候选并返回可追溯证据."""
+        if type(top_k) is not int or top_k < 1:
+            raise CodingMemoryValidationError("top_k must be a positive integer")
+        terms = tuple(_tokens(query))
+        ranks: dict[str, float] = defaultdict(float)
+        exact = self.store.exact_candidates(terms, user_id, policy.candidate_limit)
+        sparse = self.store.sparse_candidates(query, user_id, policy.candidate_limit)
+        self._add_channel(ranks, policy.exact_weight, exact)
+        self._add_channel(ranks, policy.sparse_weight, sparse)
+        if self.embedder is not None and policy.dense_weight:
+            count, candidates = self.store.dense_candidates(
+                user_id, self.fingerprint or "", policy.dense_scan_limit
+            )
+            if count > policy.dense_scan_limit:
+                raise DenseScopeTooLargeError(
+                    f"dense scan has {count} chunks; limit is {policy.dense_scan_limit}"
+                )
+            query_vector = self.embed_new([query])[0]
+            if any(len(vector) != len(query_vector) for _, vector in candidates):
+                raise CodingMemoryValidationError("stored vector dimension differs from embedder")
+            scored = [(_cosine(query_vector, vector), row) for row, vector in candidates]
+            scored.sort(key=lambda item: (-item[0], str(item[1]["id"])))
+            self._add_channel(
+                ranks, policy.dense_weight, [row for _, row in scored[: policy.candidate_limit]]
+            )
+        ordered = sorted(ranks, key=lambda key: (-ranks[key], key))
+        return self._pack(user_id, ordered, ranks, top_k, policy)

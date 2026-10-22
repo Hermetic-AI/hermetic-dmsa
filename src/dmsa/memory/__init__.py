@@ -1,4 +1,4 @@
-"""L1 记忆层（封装 PMD skeleton）。
+"""L1 记忆层（封装 PMD skeleton）。.
 
 提供对 pmd.ProvenanceDAG 的薄封装：
 
@@ -12,20 +12,38 @@
 
 from __future__ import annotations
 
+from dmsa.memory.coding import (
+    CodingMemory,
+    CodingMemoryConflictError,
+    CodingMemoryValidationError,
+    CorpusState,
+    DenseScopeTooLargeError,
+    SearchHit,
+    SearchPolicy,
+    SourceMessage,
+)
 from dmsa.memory.layer import MemoryLayer
-from dmsa.memory.lineage_query import LineageQuery, LineageDirection
+from dmsa.memory.lineage_query import LineageDirection, LineageQuery
 from dmsa.memory.prompt_context import (
     PromptContext,
     create_prompt_context,
 )
-from dmsa.memory.serialization import to_dict, from_dict
+from dmsa.memory.serialization import from_dict, to_dict
 
 __all__ = [
-    "MemoryLayer",
-    "LineageQuery",
+    "CodingMemory",
+    "CodingMemoryConflictError",
+    "CodingMemoryValidationError",
+    "CorpusState",
+    "DenseScopeTooLargeError",
     "LineageDirection",
+    "LineageQuery",
+    "MemoryLayer",
     "PromptContext",
+    "SearchHit",
+    "SearchPolicy",
+    "SourceMessage",
     "create_prompt_context",
-    "to_dict",
     "from_dict",
+    "to_dict",
 ]

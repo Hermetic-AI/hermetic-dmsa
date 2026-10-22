@@ -33,3 +33,17 @@ CLI 的 `--storage` 和全局配置 `storage.path` 使用同样的接线。
 当前 PMD 的 SQLite rollback 只恢复 live DAG，不删除快照后新增的持久化行；
 重新打开数据库可能重新加载这些行。调用方不应将其视为 durable rollback。
 PMD 目前是 workspace sibling 路径依赖，本页不承诺独立公开安装。
+
+## CodingMemory
+
+`from dmsa.memory import CodingMemory, SourceMessage, SearchPolicy` 提供独立于 DAG 的
+scope coding evidence API。`CodingMemory(path, embedder=None, policy=None)` 接受 SQLite
+路径；`add(request_id, user_id, session_id, messages)` 幂等保存有序 `SourceMessage`
+并返回 scope revision；冲突抛出 `CodingMemoryConflictError`。`search(query, user_id,
+top_k, policy=None)` 返回含稳定切片 ID、来源引用文本和 RRF 分数的 `SearchHit`。临时
+policy 可用于配对检索，不会修改实例默认策略。`delete_scope(user_id)` 删除 scope 数据，
+`corpus_state(user_ids)` 返回同一事务读取的 `CorpusState(revision, fingerprint)`，
+`corpus_fingerprint(user_ids)` 为其指纹快捷方式，`close()` 关闭连接。
+校验错误抛出 `CodingMemoryValidationError`。可选 embedder 要求 fingerprint/name、dimension
+和 `embed_batch(texts)`；向量与 fingerprint 一起持久化，scope 超出 policy 的
+`dense_scan_limit` 时 dense 检索拒绝运行。细节与适用边界见 `docs/algorithms/coding-memory.md`。
