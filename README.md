@@ -10,6 +10,7 @@
 
 **完整使用文档：[Coding Memory 技术方案与实操指南](docs/coding-memory-guide.md)**。
 包含比赛接口、Windows/Linux 启动、Agent 接入、双 Agent 实验、结果检查和 RSI 使用方法。
+首次启动请看 [快速使用文档](docs/quickstart.md)，含 Compose、PowerShell Add/Search、停机与数据保留。
 
 ## 最新方案做什么
 
@@ -112,6 +113,7 @@ python -m pytest tests/ -q
 
 ## 文档导航
 
+- [快速使用：Docker Compose 与 Add/Search](docs/quickstart.md)
 - [技术方案、运行、比赛接口与 Agent 实验](docs/coding-memory-guide.md)
 - [公开 API](docs/api-reference.md)
 - [独立部署、Docker、密钥与开源分发](docs/deployment.md)
