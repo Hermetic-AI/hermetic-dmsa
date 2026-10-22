@@ -16,9 +16,15 @@ Manifest SHA-256: `0e51c2b973fefcbd4412bfda78f65bf5eb1fd6ac38a9c764b0118e1f291fe
 | mean_tokens | not measured |
 | total_cost_usd | not measured |
 
-## By noise level
+## By arm and noise level
 
-- `low`: evidence recall=0.500, misleading-memory=0.000
-- `medium_low`: evidence recall=0.500, misleading-memory=0.000
-- `medium_high`: evidence recall=0.250, misleading-memory=0.250
-- `high`: evidence recall=0.250, misleading-memory=0.250
+| Arm | Noise | Tasks | Recall | NDCG | Misleading |
+|---|---|---:|---:|---:|---:|
+| no_memory | low | 2 | 0.000 | 0.000 | 0.000 |
+| no_memory | medium_low | 2 | 0.000 | 0.000 | 0.000 |
+| no_memory | medium_high | 2 | 0.000 | 0.000 | 0.000 |
+| no_memory | high | 2 | 0.000 | 0.000 | 0.000 |
+| sparse | low | 2 | 1.000 | 0.815 | 0.000 |
+| sparse | medium_low | 2 | 1.000 | 0.500 | 0.000 |
+| sparse | medium_high | 2 | 0.500 | 0.500 | 0.500 |
+| sparse | high | 2 | 0.500 | 0.250 | 0.500 |

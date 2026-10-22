@@ -6,7 +6,7 @@
     "seed": 17,
     "manifest_sha256": "0e51c2b973fefcbd4412bfda78f65bf5eb1fd6ac38a9c764b0118e1f291fe1b2",
     "config_sha256": "ebcdc84de4ff077c6037e36292d13e8cf7f14d22e13a5674a5b65268bbc9ba43",
-    "git_commit": "0790846e98be0be5ab3dbde2834381787a72240c",
+    "git_commit": "0b6b486474bcc2bc1d02fbdd868904f8cd2982c1",
     "arms": [
       "no_memory",
       "sparse"
