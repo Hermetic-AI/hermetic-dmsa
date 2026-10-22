@@ -423,20 +423,19 @@ profile 明确拒绝 hash embedding，依赖通过 extras 安装。
 不误判、来源字段不编造、gate 对 NaN/缺测/超预算拒绝。全量 pytest 覆盖率≥80%；
 新模块严格 ruff/mypy，既有基线违规明确列清并分批修复，不降低门槛掩盖问题。
 
-## 12. 当前状态与下一步
+## 12. 当前实现状态（0.2.0.dev0）
 
-当前 197 个测试通过、85.74% 覆盖率是此前版本的本地基线；不是本方案验证结果。
-持久化未接线、删除仍召回、零学习率仍更新等已复现问题仍待修复。
-本轮只新增技术方案，没有实现功能，没有付费调用、注册、部署或官方运行。
+原版已上传并冻结为 `baseline/pre-coding-rsi-20261022`，新版在
+`feat/coding-memory-rsi` 分支开发。
 
-先前“上传当前版本”的请求仍保留：中断前只读检查了 remote/status，没有 commit
-或 push 成功记录。恢复开发时先审查当前未提交文件，排除凭证/生成物，把源码基线
-推到用户指定 Hermetic-AI/hermetic-dmsa；随后另立开发提交，不能声称已经上传。
-# Implementation status (0.2.0.dev0)
+已实现：
 
-Implemented subset: local provenance-aware Coding Memory, bounded search, and
-the authenticated `/add` and `/search` HTTP adapter. Sparse development mode
-uses deterministic hash vectors; the optional competition profile requires a
-configured text-embedding-v4 compatible endpoint. `/v1/runs`, online evolution,
-official endpoint validation, and 1.8B-scale validation remain unimplemented.
-Packaging currently depends on the sibling PMD skeleton.
+- Add：原文和来源切片持久化、隔离、原子写入及幂等重试。
+- Search：路径/符号精确检索、FTS 稀疏检索、可选语义向量融合，按预算返回来源证据。
+- RSI 内层：根据重复失败提出小幅策略调整，开发集配对回放，通过固定门禁后登记版本；服务策略需显式更新。
+- HTTP：鉴权的 `/add`、`/search`，以及 `/health`；开发模式仅用稀疏检索，比赛模式接入配置的 `text-embedding-v4`。
+- 修复原 MemoryLayer 的持久化接线、无效记忆召回及零学习率更新问题。
+
+外层元进化、经验卡片/条件抽象、ANN 大规模向量索引及完整竞赛部署仍属于后续工作。
+本次验证限于本地测试；未调用付费 API、运行官方评测或验证 1.8B Tokens 规模，
+不能据此声称比赛得分提高。当前安装仍依赖相邻的 PMD skeleton。
