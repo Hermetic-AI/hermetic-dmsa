@@ -57,14 +57,12 @@ class CodingStore:
     @staticmethod
     def message_id(user_id: str, request_id: str, ordinal: int) -> str:
         """产生包含 scope 的稳定来源 ID."""
-        key = "\0".join((user_id, request_id, str(ordinal)))
-        return hashlib.sha256(key.encode()).hexdigest()
+        return hashlib.sha256("\0".join((user_id, request_id, str(ordinal))).encode()).hexdigest()
 
     @staticmethod
     def chunk_id(message_id: str, start: int, end: int) -> str:
         """产生来源切片稳定 ID."""
-        key = "\0".join((message_id, str(start), str(end)))
-        return hashlib.sha256(key.encode()).hexdigest()
+        return hashlib.sha256("\0".join((message_id, str(start), str(end))).encode()).hexdigest()
 
     def add(
         self,
@@ -79,14 +77,9 @@ class CodingStore:
         """事务性发布 request、原文、切片、向量和 revision."""
         digest = self.payload_hash(session_id, messages)
         with self.lock, self.db:
-            old = self.db.execute(
-                "SELECT payload_hash, revision FROM requests WHERE user_id=? AND request_id=?",
-                (user_id, request_id),
-            ).fetchone()
-            if old:
-                if old["payload_hash"] != digest:
-                    raise CodingMemoryConflictError("idempotency key payload conflict")
-                return int(old["revision"])
+            old = self.existing_request(request_id, user_id, digest)
+            if old is not None:
+                return old
             row = self.db.execute(
                 "SELECT revision FROM corpus WHERE user_id=?", (user_id,)
             ).fetchone()
@@ -160,13 +153,12 @@ class CodingStore:
 
     def sparse_candidates(self, query: str, user_id: str, limit: int) -> list[sqlite3.Row]:
         """在 FTS 虚表上按 scope 查询并限额."""
-        terms = [word for word in query.split() if word]
+        terms = query.split()
         if not terms:
             return []
         expression = " OR ".join('"' + term.replace('"', '""') + '"' for term in terms)
-        expression = (
-            f'scope : "{scope_token(user_id)}" AND ({{paths symbols text}} : ({expression}))'
-        )
+        scope = scope_token(user_id)
+        expression = f'scope : "{scope}" AND ({{paths symbols text}} : ({expression}))'
         try:
             return list(
                 self.db.execute(
