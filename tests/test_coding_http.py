@@ -5,10 +5,11 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 
 from fastapi.testclient import TestClient
+import pytest
 
+from dmsa.mcp_server.http import cli
 from dmsa.mcp_server.http.app import create_app
 from dmsa.memory import CodingMemory, SearchPolicy
-from dmsa.mcp_server.http import cli
 
 
 def test_http_auth_add_search_and_idempotency(tmp_path) -> None:
@@ -69,12 +70,8 @@ def test_http_restart_concurrency_and_sanitized_body(tmp_path) -> None:
 def test_cli_validates_key_before_server_start(monkeypatch) -> None:
     """缺服务密钥时不构造数据库或启动 server。"""
     monkeypatch.delenv("DMSA_MEMORY_API_KEY", raising=False)
-    try:
+    with pytest.raises(SystemExit, match="DMSA_MEMORY_API_KEY"):
         cli.main(["--profile", "sparse-dev"])
-    except SystemExit as exc:
-        assert "DMSA_MEMORY_API_KEY" in str(exc)
-    else:
-        raise AssertionError("CLI should reject an unset service key")
 
 
 
