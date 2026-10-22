@@ -16,7 +16,7 @@ from dmsa.memory.coding.models import (
     CorpusState,
     SourceMessage,
 )
-from dmsa.memory.coding.schema import SCHEMA
+from dmsa.memory.coding.schema import initialize, scope_token
 
 
 class CodingStore:
@@ -34,8 +34,7 @@ class CodingStore:
         self.db.row_factory = sqlite3.Row
         self.db.execute("PRAGMA busy_timeout=30000")
         self.db.execute("PRAGMA journal_mode=WAL")
-        self.db.executescript(SCHEMA)
-        self.db.commit()
+        initialize(self.db)
 
     @staticmethod
     def payload_hash(session_id: str, messages: tuple[SourceMessage, ...]) -> str:
@@ -119,7 +118,7 @@ class CodingStore:
                 cid = self.chunk_id(mid, chunk.start, chunk.end)
                 message = messages[chunk.message_index]
                 self.db.execute(
-                    "INSERT INTO chunks VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    "INSERT INTO chunks VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (
                         cid,
                         user_id,
@@ -134,6 +133,7 @@ class CodingStore:
                         " ".join(chunk.paths),
                         " ".join(chunk.symbols),
                         chunk.text,
+                        scope_token(user_id),
                     ),
                 )
                 for term in set(chunk.paths) | set(chunk.symbols):
@@ -164,11 +164,15 @@ class CodingStore:
         if not terms:
             return []
         expression = " OR ".join('"' + term.replace('"', '""') + '"' for term in terms)
+        expression = (
+            f'scope : "{scope_token(user_id)}" AND ({{paths symbols text}} : ({expression}))'
+        )
         try:
             return list(
                 self.db.execute(
-                    "SELECT c.* FROM chunks c WHERE c.user_id=? AND chunks MATCH ? "
-                    "ORDER BY bm25(chunks), c.id LIMIT ?",
+                    "SELECT c.* FROM chunk_fts JOIN chunks c ON c.rowid=chunk_fts.rowid "
+                    "WHERE c.user_id=? AND chunk_fts MATCH ? "
+                    "ORDER BY bm25(chunk_fts), c.id LIMIT ?",
                     (user_id, expression, limit),
                 )
             )

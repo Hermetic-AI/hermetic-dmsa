@@ -7,7 +7,9 @@
 
 SQLite WAL 事务同时写入幂等 request、原始消息、FTS5 切片和 scope revision。
 幂等哈希包含 session 与完整、有序消息字段。相同重试返回原 revision，不同内容冲突。
-FTS 候选在 SQL 中先过滤 user scope，再应用候选上限。精确路径/符号与 FTS 通道通过
+普通 `chunks` 表用主键、scope 和邻居复合索引保存元数据，FTS5 通过 rowid 连接；
+scope 编码为独立全文词项，与查询联合匹配后才应用候选上限，避免扫描其他用户的全部切片。
+早期直接存入 FTS 虚表的数据库会原子迁移并保留稳定 ID。精确路径/符号与 FTS 通道通过
 稳定的 reciprocal-rank fusion (RRF) 合并；选取阶段按会话限额和字符预算控制重复。
 证据文本包含 request/session/message 及字符 offset 引用。
 
@@ -21,3 +23,11 @@ SQLite 中并绑定 fingerprint 与 dimension，不同 embedder 不会误读旧�
 `CorpusState(revision, fingerprint)`。epoch 在删除后继续单调递增，避免清空再写入产生 ABA
 指纹。离线配对回放应在两臂前后读取相同 scope 集合并确认 fingerprint 未变化。policy 的
 `max_chars` 与 `max_tokens` 均是输出预算，权重必须有限且有界。
+
+`estimate_tokens(text)` 当前按 UTF-8 字节计数，作为文本 token 的保守预算代理，覆盖中文、
+长标识符以及来源头部；并非指定模型 tokenizer 的精确计数。检索与回放共用这一函数。
+单条证据无法完整装入剩余预算时跳过，不返回截断后失真的来源片段。
+
+同一实例的读取与写入事务共享 RLock，搜索和幂等预检不能看到该连接的未提交数据。
+embedding 在写事务之外执行，事务内再次检查幂等键。多个实例通过 SQLite WAL 和 busy timeout
+协调。单实例数据库读取串行化，吞吐量及 1.8B token 规模尚未验证。

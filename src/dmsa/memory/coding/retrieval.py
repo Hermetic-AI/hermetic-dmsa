@@ -7,7 +7,9 @@ import re
 import sqlite3
 from collections import defaultdict
 
+from dmsa.memory.coding.budget import estimate_tokens
 from dmsa.memory.coding.models import (
+    CodingMemoryError,
     CodingMemoryValidationError,
     DenseScopeTooLargeError,
     Embedder,
@@ -57,7 +59,12 @@ class CodingRetriever:
         """计算并校验批量向量."""
         if self.embedder is None or not texts:
             return []
-        values = self.embedder.embed_batch(texts)
+        try:
+            values = self.embedder.embed_batch(texts)
+            if not isinstance(values, (list, tuple)):
+                values = list(values)
+        except Exception as exc:
+            raise CodingMemoryError("embedding provider operation failed") from exc
         if len(values) != len(texts):
             raise CodingMemoryValidationError("embedder returned wrong vector count")
         result = []
@@ -126,7 +133,7 @@ class CodingRetriever:
                 for existing in token_sets
             ):
                 continue
-            size = len(re.findall(r"[\w./-]+", content))
+            size = estimate_tokens(content)
             if len(content) > char_budget or size > token_budget:
                 continue
             selected.append(SearchHit(cid, content, ranks[cid]))

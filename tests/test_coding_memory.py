@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import sqlite3
-
 import pytest
 
 from dmsa.memory import CodingMemory, SearchPolicy, SourceMessage
@@ -93,7 +91,7 @@ def test_transaction_rolls_back_partial_request(tmp_path) -> None:
         "CREATE TRIGGER reject_message BEFORE INSERT ON messages "
         "BEGIN SELECT RAISE(ABORT, 'injected failure'); END"
     )
-    with pytest.raises(sqlite3.IntegrityError, match="injected failure"):
+    with pytest.raises(CodingMemoryError, match="database operation"):
         memory.add("r", "u", "s", [SourceMessage("user", "evidence")])
     memory.store.db.execute("DROP TRIGGER reject_message")
     assert memory.store.revision("u") == 0
