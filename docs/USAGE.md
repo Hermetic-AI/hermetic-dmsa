@@ -633,7 +633,7 @@ aggregator = SGAAggregator(
 
 Install with `pip install -e '.[http]'`, set `DMSA_MEMORY_API_KEY`, then run
 `dmsa-memory-http --profile sparse-dev --storage ./coding.sqlite3`. This local
-profile uses deterministic hash embeddings and is suitable for protocol and
+profile uses sparse retrieval without embeddings and is suitable for protocol and
 workflow development only. The `competition` profile requires
 `DMSA_EMBEDDING_BASE_URL`, `DMSA_EMBEDDING_API_KEY`,
 `DMSA_EMBEDDING_MODEL=text-embedding-v4`; it sends paid/provider requests only

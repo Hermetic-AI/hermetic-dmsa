@@ -81,12 +81,12 @@ or activate policies automatically.
 /add`, `POST /search`, and unauthenticated `GET /health`. It does not close the
 injected `CodingMemory`; the CLI owns and closes its own database connection.
 Authentication accepts `Authorization: Bearer <key>`, `Authorization: Token
-<key>`, or `X-Api-Key`. `/add` accepts string content only; multipart/image
-content is rejected. Search is isolated by `user_id`; only empty `options` is
+<key>`, or `X-Api-Key`. `/add` accepts string content or text-part arrays; image
+parts are rejected. Search is isolated by `user_id`; only empty `options` is
 currently supported. The `/v1/runs` protocol is not implemented.
 
 Install `hermetic-dmsa[http]` and run `dmsa-memory-http --profile sparse-dev`
-for the explicit local hash-vector profile. `--profile competition` requires a
+for the explicit local sparse-only profile. `--profile competition` requires a
 configured OpenAI-compatible endpoint and API key, model `text-embedding-v4`,
-and dimension 1536. No official provider compatibility or competition scale is
+and a positive dimension configured with `--dimension` (default 1536). No official provider compatibility or competition scale is
 claimed.
