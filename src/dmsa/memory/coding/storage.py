@@ -221,7 +221,10 @@ class CodingStore:
         placeholders = ",".join("?" for _ in ids)
         return list(
             self.db.execute(
-                f"SELECT * FROM chunks WHERE user_id=? AND id IN ({placeholders})", (user_id, *ids)
+                "SELECT c.*, COALESCE(m.ordinal, c.ordinal) AS message_index FROM chunks c "
+                "LEFT JOIN messages m ON m.id=c.message_id "
+                f"WHERE c.user_id=? AND c.id IN ({placeholders})",
+                (user_id, *ids),
             )
         )
 
