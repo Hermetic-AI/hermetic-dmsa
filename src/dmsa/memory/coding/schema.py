@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS requests(
             CREATE INDEX IF NOT EXISTS chunks_neighbors ON chunks(user_id, message_id, ordinal);
             CREATE VIRTUAL TABLE IF NOT EXISTS chunk_fts USING fts5(
               paths, symbols, text, scope, content='chunks', content_rowid='rowid',
-              tokenize='unicode61');
+              tokenize='trigram');
             CREATE TRIGGER IF NOT EXISTS chunks_ai AFTER INSERT ON chunks BEGIN
               INSERT INTO chunk_fts(rowid, paths, symbols, text, scope)
                 VALUES(new.rowid, new.paths, new.symbols, new.text, new.scope);
@@ -52,8 +52,14 @@ CREATE TABLE IF NOT EXISTS requests(
 """
 
 
+def _fts_uses_trigram(db: sqlite3.Connection) -> bool:
+    """判断既有虚表是否已是 trigram 分词; 不存在时视为无需迁移."""
+    row = db.execute("SELECT sql FROM sqlite_master WHERE name='chunk_fts'").fetchone()
+    return row is None or "trigram" in str(row[0]).lower()
+
+
 def initialize(db: sqlite3.Connection) -> None:
-    """原子迁移早期虚表存储, 保留稳定 ID、原文及所有历史请求."""
+    """原子迁移早期虚表存储及旧分词器, 保留稳定 ID、原文及所有历史请求."""
     row = db.execute("SELECT sql FROM sqlite_master WHERE name='chunks'").fetchone()
     legacy = row is not None and "VIRTUAL TABLE" in row[0].upper()
     prefix = "ALTER TABLE chunks RENAME TO legacy_chunks;" if legacy else ""
@@ -63,6 +69,13 @@ def initialize(db: sqlite3.Connection) -> None:
             "INSERT INTO chunks SELECT *, 's'||lower(hex(user_id)) FROM legacy_chunks;"
             "DROP TABLE legacy_chunks;"
         )
+    stale_fts = row is not None and not _fts_uses_trigram(db)
+    if stale_fts:
+        prefix += (
+            "DROP TRIGGER IF EXISTS chunks_ai;DROP TRIGGER IF EXISTS chunks_ad;"
+            "DROP TABLE chunk_fts;"
+        )
+        suffix += "INSERT INTO chunk_fts(chunk_fts) VALUES('rebuild');"
     try:
         db.executescript("BEGIN IMMEDIATE;" + prefix + SCHEMA + suffix + "COMMIT;")
         db.execute(

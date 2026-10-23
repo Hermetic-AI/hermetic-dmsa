@@ -193,6 +193,26 @@ class _Embedder:
         return [[1.0, 0.5] for _ in texts]
 
 
+def test_query_specific_embedding_is_used_for_dense_search(tmp_path) -> None:
+    """存在 embed_query 时检索使用 query 向量, 入库仍使用 document 批量方法。"""
+
+    class AsymmetricEmbedder(_Embedder):
+        def __init__(self) -> None:
+            self.queries: list[str] = []
+
+        def embed_query(self, text: str) -> list[float]:
+            self.queries.append(text)
+            return [0.5, 1.0]
+
+    embedder = AsymmetricEmbedder()
+    policy = SearchPolicy(exact_weight=0, sparse_weight=0)
+    memory = CodingMemory(tmp_path / "asymmetric.db", embedder=embedder, policy=policy)
+    memory.add("r", "u", "s", [SourceMessage("user", "document evidence")])
+    assert memory.search("query evidence", "u", 1)
+    assert embedder.queries == ["query evidence"]
+    memory.close()
+
+
 def test_dense_validation_restart_and_scope_limit(tmp_path) -> None:
     """dense 校验拒绝坏向量, 重启明确无向量并拒绝超限扫描。"""
     memory = CodingMemory(tmp_path / "memory.db", embedder=_Embedder())
@@ -273,13 +293,78 @@ def test_invalid_policy_weights(value) -> None:
 
 
 def test_sparse_database_errors_are_not_silent_and_punctuation_is_safe(tmp_path) -> None:
-    """FTS 结构故障以记忆层异常报告, 标点查询仍正常返回空结果。"""
+    """FTS 与 LIKE 结构故障以记忆层异常报告, 标点查询仍正常返回空结果。"""
     memory = CodingMemory(tmp_path / "memory.db")
     assert memory.search('"*()', "u", 2) == []
     memory.store.db.execute("DROP TABLE chunks")
     with pytest.raises(CodingMemoryError, match="sparse retrieval"):
-        memory.store.sparse_candidates("evidence", "u", 2)
+        memory.store.sparse_candidates(("evidence",), "u", 2)
+    with pytest.raises(CodingMemoryError, match="substring retrieval"):
+        memory.store.substring_candidates(("db",), "u", 2)
     memory.close()
+
+
+def test_cjk_query_recovers_chinese_evidence(tmp_path) -> None:
+    """trigram 分词加 n-gram 展开让纯中文查询也能召回证据。"""
+    memory = CodingMemory(tmp_path / "memory.db")
+    memory.add(
+        "r1",
+        "u",
+        "s1",
+        [SourceMessage("assistant", "用 hook 自动捕获每轮编码过程写入可微记忆库")],
+    )
+    hits = memory.search("编码过程 记忆库", "u", 3, SearchPolicy(exact_weight=0))
+    assert len(hits) == 1
+    assert "可微记忆库" in hits[0].content
+    assert memory.search("不存在的中文短语", "u", 3) == []
+    memory.close()
+
+
+def test_short_term_queries_use_substring_channel(tmp_path) -> None:
+    """短于 trigram 窗口的两字中文词与短标识符经 LIKE 通道仍可召回。"""
+    memory = CodingMemory(tmp_path / "memory.db")
+    memory.add("r1", "u", "s1", [SourceMessage("assistant", "记忆库里 db 连接池的游标推进失败")])
+    policy = SearchPolicy(exact_weight=0)
+    assert len(memory.search("记忆", "u", 3, policy)) == 1
+    assert len(memory.search("db 游标", "u", 3, policy)) == 1
+    assert memory.search("无关中文", "u", 3, policy) == []
+    memory.close()
+
+
+def test_substring_channel_escapes_like_wildcards(tmp_path) -> None:
+    """LIKE 通道把下划线当字面字符, 通配符不会扩大命中范围。"""
+    memory = CodingMemory(tmp_path / "memory.db")
+    memory.add("r1", "u", "s1", [SourceMessage("assistant", "配置 axb 参数")])
+    memory.add("r2", "u", "s2", [SourceMessage("assistant", "配置 a_b 参数")])
+    rows = memory.store.substring_candidates(("_b",), "u", 5)
+    assert [str(row["session_id"]) for row in rows] == ["s2"]
+    memory.close()
+
+
+def test_legacy_unicode61_database_migrates_to_trigram(tmp_path) -> None:
+    """旧库分词器不匹配时重建 FTS, 保留全部 chunk 且中文可召回。"""
+    path = tmp_path / "memory.db"
+    memory = CodingMemory(path)
+    memory.add("r1", "u", "s1", [SourceMessage("assistant", "解析 cache_refresh 抖动根因")])
+    memory.add("r2", "u", "s2", [SourceMessage("assistant", "把中文编码过程写进记忆库")])
+    memory.store.db.execute("PRAGMA writable_schema=ON")
+    memory.store.db.execute(
+        "UPDATE sqlite_master SET sql=replace(sql, 'trigram', 'unicode61') "
+        "WHERE name='chunk_fts'"
+    )
+    memory.store.db.commit()
+    memory.close()
+
+    reopened = CodingMemory(path)
+    try:
+        row = reopened.store.db.execute(
+            "SELECT sql FROM sqlite_master WHERE name='chunk_fts'"
+        ).fetchone()
+        assert "trigram" in str(row[0])
+        assert len(reopened.search("cache_refresh", "u", 5)) == 1
+        assert len(reopened.search("编码过程 记忆库", "u", 5, SearchPolicy(exact_weight=0))) == 1
+    finally:
+        reopened.close()
 
 
 @pytest.mark.parametrize(

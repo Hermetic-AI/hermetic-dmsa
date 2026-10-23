@@ -12,12 +12,11 @@ from pathlib import Path
 from dmsa.memory.coding.extraction import Chunk
 from dmsa.memory.coding.models import (
     CodingMemoryConflictError,
-    CodingMemoryError,
     CorpusState,
     SourceMessage,
 )
 from dmsa.memory.coding.schema import initialize, scope_token
-from dmsa.memory.coding.storage_queries import neighbors
+from dmsa.memory.coding.storage_queries import neighbors, sparse_candidates, substring_candidates
 
 
 class CodingStore:
@@ -161,25 +160,17 @@ class CodingStore:
             )
             return revision
 
-    def sparse_candidates(self, query: str, user_id: str, limit: int) -> list[sqlite3.Row]:
-        """在 FTS 虚表上按 scope 查询并限额."""
-        terms = query.split()
-        if not terms:
-            return []
-        expression = " OR ".join('"' + term.replace('"', '""') + '"' for term in terms)
-        scope = scope_token(user_id)
-        expression = f'scope : "{scope}" AND ({{paths symbols text}} : ({expression}))'
-        try:
-            return list(
-                self.db.execute(
-                    "SELECT c.* FROM chunk_fts JOIN chunks c ON c.rowid=chunk_fts.rowid "
-                    "WHERE c.user_id=? AND chunk_fts MATCH ? "
-                    "ORDER BY bm25(chunk_fts), c.id LIMIT ?",
-                    (user_id, expression, limit),
-                )
-            )
-        except sqlite3.OperationalError as exc:
-            raise CodingMemoryError("sparse retrieval database operation failed") from exc
+    def sparse_candidates(
+        self, terms: tuple[str, ...], user_id: str, limit: int
+    ) -> list[sqlite3.Row]:
+        """按 scope 在 FTS 虚表检索预展开词项."""
+        return sparse_candidates(self.db, terms, user_id, limit)
+
+    def substring_candidates(
+        self, terms: tuple[str, ...], user_id: str, limit: int
+    ) -> list[sqlite3.Row]:
+        """按 scope 用 LIKE 召回短于 trigram 窗口的词项."""
+        return substring_candidates(self.db, terms, user_id, limit)
 
     def exact_candidates(
         self, terms: tuple[str, ...], user_id: str, limit: int

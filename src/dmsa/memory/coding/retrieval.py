@@ -1,4 +1,4 @@
-"""同 scope 精确、稀疏、可选 dense 召回与证据打包."""
+"""同 scope 精确、稀疏、短词子串、可选 dense 召回与证据打包."""
 
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ from dmsa.memory.coding.models import (
     SearchPolicy,
 )
 from dmsa.memory.coding.storage import CodingStore
+from dmsa.memory.coding.tokenize import query_terms
 from dmsa.memory.coding.vector_index import VectorIndex
 
 
@@ -156,13 +157,27 @@ class CodingRetriever:
         if type(top_k) is not int or top_k < 1:
             raise CodingMemoryValidationError("top_k must be a positive integer")
         terms = tuple(_tokens(query))
+        expanded = query_terms(query)
         ranks: dict[str, float] = defaultdict(float)
         exact = self.store.exact_candidates(terms, user_id, policy.candidate_limit)
-        sparse = self.store.sparse_candidates(query, user_id, policy.candidate_limit)
+        sparse = self.store.sparse_candidates(expanded, user_id, policy.candidate_limit)
+        short = self.store.substring_candidates(expanded, user_id, policy.candidate_limit)
         self._add_channel(ranks, policy.exact_weight, exact)
         self._add_channel(ranks, policy.sparse_weight, sparse)
+        self._add_channel(ranks, policy.sparse_weight, short)
         if self.embedder is not None and policy.dense_weight:
-            query_vector = self.embed_new([query])[0]
+            query_embedder = getattr(self.embedder, "embed_query", None)
+            query_vector = (
+                tuple(float(value) for value in query_embedder(query))
+                if callable(query_embedder)
+                else self.embed_new([query])[0]
+            )
+            if (
+                len(query_vector) != self.embedder.dimension
+                or not all(math.isfinite(value) for value in query_vector)
+                or not any(query_vector)
+            ):
+                raise CodingMemoryValidationError("embedder returned invalid query vector")
             if self.vector_index is not None:
                 try:
                     candidate_ids = self.vector_index.search(
