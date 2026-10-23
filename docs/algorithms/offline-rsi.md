@@ -1,5 +1,11 @@
 # Offline retrieval self-improvement
 
+Integrated runtime: see [DMSA + RSI](../integrated-rsi.md). Explicit task feedback
+now creates scoped replay cases. The service executes bounded proposals and
+paired replay, then activates only passing candidates with a baseline/corpus
+check. Unknown failure causes do not generate diagnoses. Persisted scope policies
+are loaded on the next retrieval and support rollback.
+
 This release implements only an inner development loop: repeated, labeled
 retrieval failures can suggest small declarative changes to exact-channel
 weight, redundancy threshold, or neighbor window. A redundancy diagnosis lowers
@@ -23,9 +29,20 @@ attestation against a malicious in-process caller. A service never adopts a
 candidate automatically. Development scripts must pass the explicit
 `development_only=True` acknowledgement.
 
+`ModelAssistedPolicyProposer` is an optional decision/text layer. A decision
+model receives only aggregate supported failure labels/counts and bounded
+deterministic candidates; it may return candidate indices but cannot invent
+weights or directly mutate the registry. The text model writes a short
+explanation from the selected policy only. Both outputs are advisory. Every
+candidate still requires the unchanged `run_replay` + `gate` path before it can
+be registered or promoted. The CLI is `dmsa-rsi-propose` and accepts a bounded
+JSON payload on stdin; it does not call the evaluation provider unless a
+candidate exists.
+
 The outer meta-evolution loop remains research until independently validated.
-No official evaluation, deployment, paid call, or runtime feedback learning is
-part of this implementation.
+No official evaluation or competition score is claimed. Provider calls occur
+only when the optional model advisor or configured SGA fusion is explicitly
+invoked; there is no runtime feedback learning.
 
 ## Paper mapping
 

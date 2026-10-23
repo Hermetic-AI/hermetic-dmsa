@@ -19,6 +19,7 @@ class RuntimeSettings:
     endpoint: str | None = field(default=None, repr=False)
     embedding_key: str | None = field(default=None, repr=False)
     dimension: int = 1536
+    embedding_model: str | None = None
 
 
 def read_secret(name: str) -> str:
@@ -67,7 +68,10 @@ def load_settings(
         valid = False
     if not valid:
         raise ConfigError(f"required valid HTTP endpoint: {endpoint_env}")
-    if os.environ.get("DMSA_EMBEDDING_MODEL", "").strip() != "text-embedding-v4":
-        raise ConfigError("DMSA_EMBEDDING_MODEL must explicitly equal text-embedding-v4")
+    embedding_model = os.environ.get("DMSA_EMBEDDING_MODEL", "").strip()
+    if embedding_model not in {"text-embedding-v4", "qwen3.7-text-embedding"}:
+        raise ConfigError(
+            "DMSA_EMBEDDING_MODEL must be text-embedding-v4 or qwen3.7-text-embedding"
+        )
     embedding_key = read_secret("DMSA_EMBEDDING_API_KEY")
-    return RuntimeSettings(api_key, endpoint, embedding_key, dimension)
+    return RuntimeSettings(api_key, endpoint, embedding_key, dimension, embedding_model)

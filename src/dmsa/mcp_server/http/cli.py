@@ -5,8 +5,11 @@ from __future__ import annotations
 
 import argparse
 import os
+from typing import Any
 
 from dmsa.errors import ConfigError
+from dmsa.gradient.feedback import RetrievalFeedbackStore
+from dmsa.gradient.integrated import IntegratedRSI
 from dmsa.mcp_server.http.app import create_app
 from dmsa.mcp_server.http.runtime import load_settings
 from dmsa.memory import CodingMemory
@@ -22,7 +25,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--api-key-env", default="DMSA_MEMORY_API_KEY")
     parser.add_argument("--endpoint-env", default="DMSA_EMBEDDING_BASE_URL")
-    parser.add_argument("--dimension", type=int, default=1536)
+    parser.add_argument(
+        "--dimension", type=int, default=os.environ.get("DMSA_EMBEDDING_DIMENSION", "1024")
+    )
     return parser
 
 
@@ -34,22 +39,31 @@ def main(argv: list[str] | None = None) -> int:
     except ConfigError as exc:
         raise SystemExit(str(exc)) from None
     client = None
+    embedder: Any | None = None
     if args.profile == "competition":
-        try:
-            import openai
-        except ImportError as exc:
-            raise SystemExit("install hermetic-dmsa[http] to use competition profile") from exc
-        from dmsa.mcp_server.http.embedding import TextEmbeddingV4
+        if settings.embedding_model == "qwen3.7-text-embedding":
+            from dmsa.mcp_server.http.embedding import QwenTextEmbedding
 
-        client = openai.OpenAI(
-            api_key=settings.embedding_key,
-            base_url=settings.endpoint,
-            timeout=60,
-            max_retries=2,
-        )
-        embedder = TextEmbeddingV4(client, settings.dimension)
-    else:
-        embedder = None
+            embedder = QwenTextEmbedding(
+                settings.endpoint or "",
+                settings.embedding_key or "",
+                settings.dimension,
+                model=settings.embedding_model,
+            )
+        else:
+            try:
+                import openai
+            except ImportError as exc:
+                raise SystemExit("install hermetic-dmsa[http] to use competition profile") from exc
+            from dmsa.mcp_server.http.embedding import TextEmbeddingV4
+
+            client = openai.OpenAI(
+                api_key=settings.embedding_key,
+                base_url=settings.endpoint,
+                timeout=60,
+                max_retries=2,
+            )
+            embedder = TextEmbeddingV4(client, settings.dimension)
     try:
         import uvicorn
     except ImportError as exc:
@@ -69,8 +83,30 @@ def main(argv: list[str] | None = None) -> int:
             except Exception as exc:
                 raise SystemExit("cannot initialize configured Qdrant vector index") from exc
         memory = CodingMemory(args.storage, embedder=embedder, vector_index=vector_index)
+        audit = RetrievalFeedbackStore(args.storage)
+        try:
+            audit.event(
+                "system",
+                "runtime_started",
+                {
+                    "rsi_enabled": os.environ.get("DMSA_RSI_ENABLED", "true"),
+                    "rsi_models": os.environ.get("DMSA_RSI_MODELS", "false"),
+                    "retrieval_profile": args.profile,
+                    "embedding_model": settings.embedding_model if embedder else "disabled",
+                },
+            )
+        finally:
+            audit.close()
         uvicorn.run(
-            create_app(memory, settings.api_key),
+            create_app(
+                memory,
+                settings.api_key,
+                IntegratedRSI(
+                    memory, models=os.environ.get("DMSA_RSI_MODELS", "false").lower() == "true"
+                )
+                if os.environ.get("DMSA_RSI_ENABLED", "true").lower() == "true"
+                else None,
+            ),
             host=args.host,
             port=args.port,
             log_config=None,
@@ -81,4 +117,6 @@ def main(argv: list[str] | None = None) -> int:
             memory.close()
         if client is not None:
             client.close()
+        if embedder is not None and hasattr(embedder, "close"):
+            embedder.close()
     return 0

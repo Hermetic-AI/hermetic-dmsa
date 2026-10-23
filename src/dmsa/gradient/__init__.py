@@ -11,6 +11,7 @@ from dmsa.gradient.clustering import (
 from dmsa.gradient.embedding import EmbedderProtocol, HashEmbedder
 from dmsa.gradient.fusion import FusionClient, RuleBasedFusion, StaticFusion
 from dmsa.gradient.llm import LLMFusion, OpenAIEmbedder, build_embedder
+from dmsa.gradient.model_advisor import ModelAssistedPolicyProposer, PolicyAdvice
 from dmsa.gradient.policy import (
     FailureDiagnostic,
     OfflineRSIError,
@@ -40,8 +41,10 @@ __all__ = [
     "HDBSCANBackend",
     "HashEmbedder",
     "LLMFusion",
+    "ModelAssistedPolicyProposer",
     "OfflineRSIError",
     "OpenAIEmbedder",
+    "PolicyAdvice",
     "PolicyRegistry",
     "ReplayCase",
     "ReplayReport",

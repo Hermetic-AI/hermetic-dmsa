@@ -1,8 +1,10 @@
 # ruff: noqa: RUF002, D415
 """Coding Memory HTTP adapter。"""
+
 from __future__ import annotations
 
 import secrets
+import sqlite3
 from typing import Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException
@@ -11,15 +13,28 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from dmsa.errors import DMSAError, InvalidConfigValueError
+from dmsa.gradient.integrated import IntegratedRSI
+from dmsa.gradient.policy import OfflineRSIError
 from dmsa.mcp_server.http.contracts import AddContract, SearchContract, validate_message
+from dmsa.mcp_server.http.feedback import install_feedback
 from dmsa.memory import CodingMemory, CodingMemoryConflictError, CodingMemoryValidationError
 
 
-def create_app(memory: CodingMemory, api_key: str) -> FastAPI:
+def create_app(memory: CodingMemory, api_key: str, rsi: IntegratedRSI | None = None) -> FastAPI:
     """为调用方拥有的 memory 创建 bearer/token/key 认证 HTTP app。"""
     if not isinstance(api_key, str) or not api_key.strip():
         raise InvalidConfigValueError("api_key must be nonempty")
     app = FastAPI(title="DMSA Coding Memory", docs_url=None, redoc_url=None)
+
+    @app.exception_handler(sqlite3.Error)
+    async def database_error(_: Any, __: sqlite3.Error) -> JSONResponse:
+        """数据库故障返回固定响应，不泄露查询及数据库路径。"""
+        return JSONResponse(status_code=503, content={"detail": "database unavailable"})
+
+    @app.exception_handler(OfflineRSIError)
+    async def rsi_error(_: Any, __: OfflineRSIError) -> JSONResponse:
+        """隐藏模型响应与内部数据，审计库保留错误类型。"""
+        return JSONResponse(status_code=422, content={"detail": "RSI request failed"})
 
     @app.exception_handler(RequestValidationError)
     async def invalid_request(_: Any, __: RequestValidationError) -> JSONResponse:
@@ -77,6 +92,8 @@ def create_app(memory: CodingMemory, api_key: str) -> FastAPI:
         """返回限定 user scope 的检索结果。"""
         try:
             request = SearchContract.model_validate(payload)
+            if rsi is not None:
+                return rsi.search(request.query, request.user_id, request.top_k)
             results = memory.search(request.query, request.user_id, request.top_k)
         except ValidationError as exc:
             raise HTTPException(status_code=422, detail="invalid request") from exc
@@ -85,12 +102,9 @@ def create_app(memory: CodingMemory, api_key: str) -> FastAPI:
         except DMSAError as exc:
             raise HTTPException(status_code=503, detail="memory request failed") from exc
         return {
-            "data": [
-                {"id": hit.id, "content": hit.content, "score": hit.score}
-                for hit in results
-            ]
+            "data": [{"id": hit.id, "content": hit.content, "score": hit.score} for hit in results]
         }
 
+    if rsi is not None:
+        install_feedback(app, rsi, authenticate)
     return app
-
-
