@@ -7,8 +7,29 @@ services:
     restart: unless-stopped
     ports:
       - "${DMSA_HTTP_BIND:-127.0.0.1}:${DMSA_HTTP_PORT:-8000}:8000"
+    command:
+      - --profile
+      - "${DMSA_PROFILE:-sparse-dev}"
+      - --host
+      - 0.0.0.0
+      - --storage
+      - /data/coding.sqlite3
+      - --dimension
+      - "${DMSA_EMBEDDING_DIMENSION:-1024}"
     environment:
-      DMSA_MEMORY_API_KEY: "${DMSA_MEMORY_API_KEY:-local-development-only-change-me}"
+      DMSA_MEMORY_API_KEY: "${DMSA_MEMORY_API_KEY:?Set DMSA_MEMORY_API_KEY in .env}"
+      DMSA_RSI_ENABLED: "${DMSA_RSI_ENABLED:-true}"
+      DMSA_RSI_MODELS: "${DMSA_RSI_MODELS:-true}"
+      DMSA_DECISION_BASE_URL: "${DMSA_DECISION_BASE_URL:-}"
+      DMSA_DECISION_API_KEY: "${DMSA_DECISION_API_KEY:-}"
+      DMSA_DECISION_MODEL: "${DMSA_DECISION_MODEL:-decision-model-preview}"
+      DMSA_TEXT_BASE_URL: "${DMSA_TEXT_BASE_URL:-https://api.minimax.cn/v1}"
+      DMSA_TEXT_API_KEY: "${DMSA_TEXT_API_KEY:-}"
+      DMSA_TEXT_MODEL: "${DMSA_TEXT_MODEL:-MiniMax-M3.1-Flash}"
+      DMSA_EMBEDDING_BASE_URL: "${DMSA_EMBEDDING_BASE_URL:-}"
+      DMSA_EMBEDDING_API_KEY: "${DMSA_EMBEDDING_API_KEY:-}"
+      DMSA_EMBEDDING_MODEL: "${DMSA_EMBEDDING_MODEL:-}"
+      DMSA_EMBEDDING_DIMENSION: "${DMSA_EMBEDDING_DIMENSION:-1024}"
     volumes:
       - memory-data:/data
     read_only: true
@@ -17,5 +38,77 @@ services:
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     stop_grace_period: 30s
+  memory-browser:
+    image: hermetic-dmsa:local
+    build: .
+    init: true
+    entrypoint: ["dmsa-memory-browser"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/api/rsi',timeout=3)"]
+    command: ["--database", "/data/coding.sqlite3", "--host", "0.0.0.0", "--port", "8765"]
+    ports:
+      - "${DMSA_BROWSER_BIND:-127.0.0.1}:${DMSA_BROWSER_PORT:-8765}:8765"
+    volumes:
+      - memory-data:/data:ro
+    depends_on:
+      memory:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+  agent-mcp:
+    image: hermetic-dmsa:local
+    build: .
+    profiles: ["mcp"]
+    entrypoint: ["dmsa-coding-memory-mcp"]
+    command: []
+    healthcheck:
+      disable: true
+    depends_on:
+      memory:
+        condition: service_healthy
+    environment:
+      DMSA_CODING_MEMORY_URL: http://memory:8000
+      DMSA_MEMORY_API_KEY: "${DMSA_MEMORY_API_KEY}"
+      DMSA_CODING_MEMORY_SCOPE: "${DMSA_CODING_MEMORY_SCOPE:-hermetic-dmsa}"
+      DMSA_GRADIENT__FUSION_BACKEND: "${DMSA_GRADIENT__FUSION_BACKEND:-llm}"
+      DMSA_GRADIENT__LLM_CHAT_MODEL: "${DMSA_GRADIENT__LLM_CHAT_MODEL:-MiniMax-M3.1-Flash}"
+      DMSA_GRADIENT__LLM_BASE_URL: "${DMSA_GRADIENT__LLM_BASE_URL:-https://api.minimax.cn/v1}"
+      DMSA_GRADIENT__LLM_API_KEY_ENV: DMSA_TEXT_API_KEY
+      DMSA_TEXT_API_KEY: "${DMSA_TEXT_API_KEY:-}"
+    volumes:
+      - agent-memory-data:/data
+    stdin_open: true
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+  rsi-advisor:
+    image: hermetic-dmsa:local
+    build: .
+    profiles: ["rsi"]
+    entrypoint: ["dmsa-rsi-propose"]
+    healthcheck:
+      disable: true
+    environment:
+      DMSA_RSI_SERVICE_URL: http://memory:8000
+      DMSA_MEMORY_API_KEY: "${DMSA_MEMORY_API_KEY}"
+      DMSA_DECISION_BASE_URL: "${DMSA_DECISION_BASE_URL:-}"
+      DMSA_DECISION_API_KEY: "${DMSA_DECISION_API_KEY:-}"
+      DMSA_DECISION_MODEL: "${DMSA_DECISION_MODEL:-decision-model-preview}"
+      DMSA_TEXT_BASE_URL: "${DMSA_TEXT_BASE_URL:-https://api.minimax.cn/v1}"
+      DMSA_TEXT_API_KEY: "${DMSA_TEXT_API_KEY:-}"
+      DMSA_TEXT_MODEL: "${DMSA_TEXT_MODEL:-MiniMax-M3.1-Flash}"
+    stdin_open: true
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
 volumes:
   memory-data:
+  agent-memory-data:

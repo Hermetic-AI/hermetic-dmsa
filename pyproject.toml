@@ -79,6 +79,7 @@ all = [
 ]
 http = [
     "fastapi>=0.110",
+    "httpx>=0.27",
     "uvicorn>=0.27",
     "openai>=1.0.0",
 ]
@@ -95,8 +96,11 @@ Paper = "https://arxiv.org/abs/XXXX.XXXXX"
 [project.scripts]
 # L4 入口：MCP server CLI
 dmsa-mcp-server = "dmsa.mcp_server.cli:main"
+dmsa-coding-memory-mcp = "dmsa.mcp_server.coding_memory:main"
 # Inspect CLI（只读诊断工具）
 dmsa-inspect = "dmsa.inspect.main:main"
+dmsa-memory-browser = "dmsa.inspect.memory_browser:main"
+dmsa-rsi-propose = "dmsa.gradient.rsi_cli:main"
 dmsa-memory-http = "dmsa.mcp_server.http.cli:main"
 dmsa-memory-smoke = "dmsa.mcp_server.http.smoke:main"
 
@@ -106,6 +110,9 @@ dmsa-memory-smoke = "dmsa.mcp_server.http.smoke:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"dmsa.inspect" = ["memory-explorer.html"]
 
 [tool.ruff]
 # PD1：严格 ruff 规则

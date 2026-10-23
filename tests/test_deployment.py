@@ -121,6 +121,25 @@ def test_competition_valid_configuration_and_dimension_boundary(
         load_settings("competition", dimension=0)
 
 
+def test_competition_accepts_qwen_native_embedding_configuration(
+    clean_environment: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """接受 DashScope 原生 endpoint 与显式 Qwen 模型配置。"""
+    from dmsa.mcp_server.http.runtime import load_settings
+
+    monkeypatch.setenv("DMSA_MEMORY_API_KEY", "service-secret")
+    monkeypatch.setenv("DMSA_EMBEDDING_API_KEY", "provider-secret")
+    monkeypatch.setenv(
+        "DMSA_EMBEDDING_BASE_URL",
+        "https://workspace.example/api/v1/services/embeddings/text-embedding/text-embedding",
+    )
+    monkeypatch.setenv("DMSA_EMBEDDING_MODEL", "qwen3.7-text-embedding")
+    settings = load_settings("competition", dimension=1024)
+    assert settings.embedding_model == "qwen3.7-text-embedding"
+    assert settings.dimension == 1024
+    assert "provider-secret" not in repr(settings)
+
+
 def test_smoke_contract_failure_is_sanitized(monkeypatch: pytest.MonkeyPatch) -> None:
     from dmsa.mcp_server.http import smoke
 
