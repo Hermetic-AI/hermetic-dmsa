@@ -70,6 +70,9 @@ data/
 secrets/
 *.toml.local
 
+# Benchmark resume checkpoints (bound to local manifest hash + seed; not results)
+*.json.checkpoint
+
 # OS
 Thumbs.db
 desktop.ini
