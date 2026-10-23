@@ -1,0 +1,402 @@
+{
+  "schema_version": 1,
+  "evaluation_type": "synthetic_proxy_not_official",
+  "official_score": null,
+  "run_metadata": {
+    "seed": 42,
+    "manifest_sha256": "0e51c2b973fefcbd4412bfda78f65bf5eb1fd6ac38a9c764b0118e1f291fe1b2",
+    "config_sha256": "eb5d26484bdb487178a04f41d4e64dbb4afd89d21ed008241b25fa5bb08c7c8e",
+    "git_commit": "e75d07156c8c48c8f1c7dad921e7864889b93bef",
+    "arms": [
+      "no_memory",
+      "sparse"
+    ],
+    "agent": null,
+    "agent_config_sha256": null,
+    "embedding_config_sha256": null,
+    "vector_backend": "sqlite",
+    "vector_config_sha256": null,
+    "python": "3.12.13"
+  },
+  "metrics": {
+    "agent_reported_resolved_rate": null,
+    "agent_reported_test_pass_rate": null,
+    "localization_accuracy": null,
+    "evidence_recall": 0.4375,
+    "ndcg": 0.3452324383928644,
+    "misleading_memory_rate": 0.0625,
+    "latency_seconds": null,
+    "mean_tokens": null,
+    "total_cost_usd": null
+  },
+  "metrics_by_arm_and_noise": {
+    "no_memory": {
+      "low": {
+        "task_count": 2,
+        "evidence_recall": 0.0,
+        "ndcg": 0.0,
+        "misleading_memory_rate": 0.0,
+        "agent_reported_resolved_rate": null,
+        "agent_reported_test_pass_rate": null,
+        "localization_accuracy": null
+      },
+      "medium_low": {
+        "task_count": 2,
+        "evidence_recall": 0.0,
+        "ndcg": 0.0,
+        "misleading_memory_rate": 0.0,
+        "agent_reported_resolved_rate": null,
+        "agent_reported_test_pass_rate": null,
+        "localization_accuracy": null
+      },
+      "medium_high": {
+        "task_count": 2,
+        "evidence_recall": 0.0,
+        "ndcg": 0.0,
+        "misleading_memory_rate": 0.0,
+        "agent_reported_resolved_rate": null,
+        "agent_reported_test_pass_rate": null,
+        "localization_accuracy": null
+      },
+      "high": {
+        "task_count": 2,
+        "evidence_recall": 0.0,
+        "ndcg": 0.0,
+        "misleading_memory_rate": 0.0,
+        "agent_reported_resolved_rate": null,
+        "agent_reported_test_pass_rate": null,
+        "localization_accuracy": null
+      }
+    },
+    "sparse": {
+      "low": {
+        "task_count": 2,
+        "evidence_recall": 1.0,
+        "ndcg": 1.0,
+        "misleading_memory_rate": 0.0,
+        "agent_reported_resolved_rate": null,
+        "agent_reported_test_pass_rate": null,
+        "localization_accuracy": null
+      },
+      "medium_low": {
+        "task_count": 2,
+        "evidence_recall": 1.0,
+        "ndcg": 0.8154648767857288,
+        "misleading_memory_rate": 0.0,
+        "agent_reported_resolved_rate": null,
+        "agent_reported_test_pass_rate": null,
+        "localization_accuracy": null
+      },
+      "medium_high": {
+        "task_count": 2,
+        "evidence_recall": 1.0,
+        "ndcg": 0.6309297535714575,
+        "misleading_memory_rate": 0.0,
+        "agent_reported_resolved_rate": null,
+        "agent_reported_test_pass_rate": null,
+        "localization_accuracy": null
+      },
+      "high": {
+        "task_count": 2,
+        "evidence_recall": 0.5,
+        "ndcg": 0.31546487678572877,
+        "misleading_memory_rate": 0.5,
+        "agent_reported_resolved_rate": null,
+        "agent_reported_test_pass_rate": null,
+        "localization_accuracy": null
+      }
+    }
+  },
+  "metrics_by_task_kind": {
+    "bug": {
+      "task_count": 8,
+      "evidence_recall": 0.375,
+      "ndcg": 0.2827324383928644,
+      "misleading_memory_rate": 0.125,
+      "agent_reported_resolved_rate": null,
+      "agent_reported_test_pass_rate": null,
+      "localization_accuracy": null
+    },
+    "feature": {
+      "task_count": 8,
+      "evidence_recall": 0.5,
+      "ndcg": 0.4077324383928644,
+      "misleading_memory_rate": 0.0,
+      "agent_reported_resolved_rate": null,
+      "agent_reported_test_pass_rate": null,
+      "localization_accuracy": null
+    }
+  },
+  "noise_degradation_low_to_high": {
+    "no_memory": 0.0,
+    "sparse": 0.5
+  },
+  "noise_levels": {
+    "low": [
+      {
+        "task_id": "bug-cache-race-001",
+        "kind": "bug",
+        "arm": "no_memory",
+        "evidence_ids": [],
+        "evidence_classes": [],
+        "evidence_recall": 0.0,
+        "ndcg": 0.0,
+        "misleading_memory": 0.0,
+        "agent_result": null,
+        "localized": null
+      },
+      {
+        "task_id": "bug-cache-race-001",
+        "kind": "bug",
+        "arm": "sparse",
+        "evidence_ids": [
+          "dbdd2bf74e5b639dd39535413b4b5a7e54499e2948a4c7d9283b250d14eca34a"
+        ],
+        "evidence_classes": [
+          "gold"
+        ],
+        "evidence_recall": 1.0,
+        "ndcg": 1.0,
+        "misleading_memory": 0.0,
+        "agent_result": null,
+        "localized": null
+      },
+      {
+        "task_id": "feature-parser-timeout-002",
+        "kind": "feature",
+        "arm": "no_memory",
+        "evidence_ids": [],
+        "evidence_classes": [],
+        "evidence_recall": 0.0,
+        "ndcg": 0.0,
+        "misleading_memory": 0.0,
+        "agent_result": null,
+        "localized": null
+      },
+      {
+        "task_id": "feature-parser-timeout-002",
+        "kind": "feature",
+        "arm": "sparse",
+        "evidence_ids": [
+          "715d46a043abd9e11618c9f34dcea202965c7ac2843a8fcce2ffd381fa6e173a",
+          "7b9e5946bf624847f85789fcb1cbdd9697615a7da6835e4929963a5dabdcf3d9"
+        ],
+        "evidence_classes": [
+          "gold",
+          "noise"
+        ],
+        "evidence_recall": 1.0,
+        "ndcg": 1.0,
+        "misleading_memory": 0.0,
+        "agent_result": null,
+        "localized": null
+      }
+    ],
+    "medium_low": [
+      {
+        "task_id": "bug-cache-race-001",
+        "kind": "bug",
+        "arm": "no_memory",
+        "evidence_ids": [],
+        "evidence_classes": [],
+        "evidence_recall": 0.0,
+        "ndcg": 0.0,
+        "misleading_memory": 0.0,
+        "agent_result": null,
+        "localized": null
+      },
+      {
+        "task_id": "bug-cache-race-001",
+        "kind": "bug",
+        "arm": "sparse",
+        "evidence_ids": [
+          "30c31d360bc2a02c46441b1d89aae2ba07a6e1d2465196008011b1114678a136",
+          "d8c7381ae4f447660598d64b987b4ce274c9593b0279ff6b77bc857394597310",
+          "4f6250e1af540ef027e2fa525e07465328fa1a2d6b74f790dd6f84b87ec856ef"
+        ],
+        "evidence_classes": [
+          "noise",
+          "gold",
+          "noise"
+        ],
+        "evidence_recall": 1.0,
+        "ndcg": 0.6309297535714575,
+        "misleading_memory": 0.0,
+        "agent_result": null,
+        "localized": null
+      },
+      {
+        "task_id": "feature-parser-timeout-002",
+        "kind": "feature",
+        "arm": "no_memory",
+        "evidence_ids": [],
+        "evidence_classes": [],
+        "evidence_recall": 0.0,
+        "ndcg": 0.0,
+        "misleading_memory": 0.0,
+        "agent_result": null,
+        "localized": null
+      },
+      {
+        "task_id": "feature-parser-timeout-002",
+        "kind": "feature",
+        "arm": "sparse",
+        "evidence_ids": [
+          "51c21ca2625f301d8939d21b4a407bda0db9239b0a225540e22aeb9e05c4c968",
+          "907395a77571300675617b7f1edc2fb3ed85b7b04c1ce17a459a5a44f93209bb",
+          "bd41221d42e6c3518a712f37cc9a66c5c86b1ef7f3510aa02279f4582adca558"
+        ],
+        "evidence_classes": [
+          "gold",
+          "noise",
+          "noise"
+        ],
+        "evidence_recall": 1.0,
+        "ndcg": 1.0,
+        "misleading_memory": 0.0,
+        "agent_result": null,
+        "localized": null
+      }
+    ],
+    "medium_high": [
+      {
+        "task_id": "bug-cache-race-001",
+        "kind": "bug",
+        "arm": "no_memory",
+        "evidence_ids": [],
+        "evidence_classes": [],
+        "evidence_recall": 0.0,
+        "ndcg": 0.0,
+        "misleading_memory": 0.0,
+        "agent_result": null,
+        "localized": null
+      },
+      {
+        "task_id": "bug-cache-race-001",
+        "kind": "bug",
+        "arm": "sparse",
+        "evidence_ids": [
+          "31e09be82688d35bb57466672e2cb99e2ed9179d2c58b9c7f76179aef6db12c8",
+          "3d11e09cdb168eafcd1781c3606991ed47e9447737b9dba0a8fe73c10b078de4",
+          "6681a574ef225ac7245a11474e18a29645e276e7afed9babc47861f1486a872e",
+          "d50a19cb1b793eadb80742fa95403c92e19c8f0a880c4167daae7d10d4411b64"
+        ],
+        "evidence_classes": [
+          "noise",
+          "gold",
+          "noise",
+          "noise"
+        ],
+        "evidence_recall": 1.0,
+        "ndcg": 0.6309297535714575,
+        "misleading_memory": 0.0,
+        "agent_result": null,
+        "localized": null
+      },
+      {
+        "task_id": "feature-parser-timeout-002",
+        "kind": "feature",
+        "arm": "no_memory",
+        "evidence_ids": [],
+        "evidence_classes": [],
+        "evidence_recall": 0.0,
+        "ndcg": 0.0,
+        "misleading_memory": 0.0,
+        "agent_result": null,
+        "localized": null
+      },
+      {
+        "task_id": "feature-parser-timeout-002",
+        "kind": "feature",
+        "arm": "sparse",
+        "evidence_ids": [
+          "0f5ff3f924bf42b2dd84df1d84a26a163bbe27b060d911f44144925ad1e356e1",
+          "742db4d85a0762cda40cc5d14f52a4427512a117eebf3c533e4df4bdf3c197b5",
+          "dbb662320b034868fe84f3e3c9e087ae6278d4de96143d2c13f2b436dbb55d0d",
+          "5febeb6b0b74571deb7d747751417ef915b7214a55f8c3cacd929a4b7279a56c"
+        ],
+        "evidence_classes": [
+          "noise",
+          "gold",
+          "noise",
+          "noise"
+        ],
+        "evidence_recall": 1.0,
+        "ndcg": 0.6309297535714575,
+        "misleading_memory": 0.0,
+        "agent_result": null,
+        "localized": null
+      }
+    ],
+    "high": [
+      {
+        "task_id": "bug-cache-race-001",
+        "kind": "bug",
+        "arm": "no_memory",
+        "evidence_ids": [],
+        "evidence_classes": [],
+        "evidence_recall": 0.0,
+        "ndcg": 0.0,
+        "misleading_memory": 0.0,
+        "agent_result": null,
+        "localized": null
+      },
+      {
+        "task_id": "bug-cache-race-001",
+        "kind": "bug",
+        "arm": "sparse",
+        "evidence_ids": [
+          "0bd188ac104fd18682617af046722ab94db6d86bfaaeadefdcc504e3e379b636",
+          "15acc1afd306b5e2e0ae5edcb75ac8ab5cd6eab908b19f71e6d877fb08c88636",
+          "89f4162c62965dbf8620f2dad5660c69842b2494a803359f55fe408f446118fd",
+          "6780fe19bd5e644e19038c74ed7f8be67e34e1512b583e4cb6a65596912478be"
+        ],
+        "evidence_classes": [
+          "noise",
+          "noise",
+          "noise",
+          "noise"
+        ],
+        "evidence_recall": 0.0,
+        "ndcg": 0.0,
+        "misleading_memory": 1.0,
+        "agent_result": null,
+        "localized": null
+      },
+      {
+        "task_id": "feature-parser-timeout-002",
+        "kind": "feature",
+        "arm": "no_memory",
+        "evidence_ids": [],
+        "evidence_classes": [],
+        "evidence_recall": 0.0,
+        "ndcg": 0.0,
+        "misleading_memory": 0.0,
+        "agent_result": null,
+        "localized": null
+      },
+      {
+        "task_id": "feature-parser-timeout-002",
+        "kind": "feature",
+        "arm": "sparse",
+        "evidence_ids": [
+          "34c532a3eec74d9e80c5f27f00c0e4be0c88ff1fae5283357276e2042e0d2aac",
+          "aedb5981f7273d09492b3c792d370c34340954e7b1574f53d428fe3fc89fa5b0",
+          "487bdc0f708c3d441874c2649bb7029a04d87dad9333d66ef64bbca77cdf58d3",
+          "0525c605b7e46abb5f9ea4be3883aac141af36c95ba3d336ea923f0145faddc4"
+        ],
+        "evidence_classes": [
+          "noise",
+          "gold",
+          "noise",
+          "noise"
+        ],
+        "evidence_recall": 1.0,
+        "ndcg": 0.6309297535714575,
+        "misleading_memory": 0.0,
+        "agent_result": null,
+        "localized": null
+      }
+    ]
+  }
+}
