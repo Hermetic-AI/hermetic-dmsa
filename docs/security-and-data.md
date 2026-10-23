@@ -10,7 +10,9 @@ does not claim a multi-tenant security boundary or independent certification.
 | HTTP service | Unauthorized Add/Search | Bearer service key; malformed requests rejected | Use a long random key; rotate it; terminate public TLS upstream |
 | `user_id` scope | Caller reads another scope | SQL and Qdrant filter every retrieval by exact scope | `user_id` is caller-supplied, not an authenticated principal; isolate clients or add an authenticated gateway before shared public use |
 | Historical messages | Prompt injection, stale API advice, secrets | Raw evidence is labeled with provenance; experience cards only extract explicit text; no execution | Treat returned memory as untrusted data; review retention and redact before Add |
+| MCP tool failures | Local paths or source payloads in exception text | Tool responses use a fixed failure message; structured logs record only exception type | Keep logs local and restrict access; never add exception messages or payloads to MCP errors |
 | Embedding provider | Source text disclosure / credential misuse | Explicit competition profile; endpoint and model validation; key from environment/file | Review provider terms, data residency, endpoint ownership, and key scope |
+| RSI decision / text provider | Diagnostic or policy data disclosure; unsafe model output | Sends only aggregate failure labels/counts and bounded policy candidates; validates returned candidate indices; advice cannot activate policy | Review provider terms, endpoints, and key scope; always run the local replay gate |
 | SQLite / Qdrant volumes | Theft, accidental exposure, stale deletion | Persistent Docker volumes; Qdrant has no published host port in Compose | Restrict host access, encrypt disks/backups, stop service before file-level copy, set retention/deletion policy |
 | Container / dependencies | Vulnerable transitive package or compromised image | Pinned local PMD archive, dependency lock, pip-audit CI, non-root/read-only app container | Review CI and upstream advisories; rebuild on security updates; scan the resolved image in release CI |
 
@@ -32,6 +34,9 @@ does not claim a multi-tenant security boundary or independent certification.
   authenticated, TLS-protected access design.
 - Embedding requests send chunk text to the configured provider. Sparse-dev
   avoids this egress; competition mode does not.
+- RSI model assistance sends only supported failure labels/counts and candidate
+  retrieval settings, not source code or raw memory. The candidate must still
+  pass the paired local replay gate and is never auto-promoted.
 
 ## Retention and deletion
 

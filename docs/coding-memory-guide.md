@@ -46,6 +46,8 @@ flowchart LR
 
 在指定 `user_id` 内，用路径/符号等精确词项、FTS5 全文和可选向量召回，经 RRF 融合排序。之后去重、限制单个 session 的贡献，按策略补入邻近片段，并遵守返回预算。
 
+全文索引使用 `trigram` 三元组分词，中文、日文和代码标识符都能召回；短于 3 个字符的词项（例如两字中文词、`db`）走同一权重下的 LIKE 子串兜底通道，只在查询包含短词项时扫描该 scope。
+
 结果包含稳定切片 ID、带来源引用的文本和排序分数。`score` 用于排序，不是正确率。默认策略：
 
 | 参数 | 默认值 | 含义 |
@@ -120,15 +122,16 @@ PowerShell 激活受限时，可直接用 `.\.venv\Scripts\dmsa-memory-http.exe`
 
 ```powershell
 $env:DMSA_MEMORY_API_KEY = "your-memory-service-key"
-$env:DMSA_EMBEDDING_BASE_URL = "https://YOUR-PROVIDER/OPENAI-COMPATIBLE-BASE"
+$env:DMSA_EMBEDDING_BASE_URL = "https://YOUR-WORKSPACE.cn-beijing.maas.aliyuncs.com/api/v1/services/embeddings/text-embedding/text-embedding"
 $env:DMSA_EMBEDDING_API_KEY = "your-embedding-provider-key"
-$env:DMSA_EMBEDDING_MODEL = "text-embedding-v4"
-dmsa-memory-http --profile competition --dimension 1536 --storage ./coding-vector.sqlite3
+$env:DMSA_EMBEDDING_MODEL = "qwen3.7-text-embedding"
+$env:DMSA_EMBEDDING_DIMENSION = "1024"
+dmsa-memory-http --profile competition --dimension 1024 --storage ./coding-vector.sqlite3
 ```
 
-Bash 用 `export NAME=value` 设置同名变量。替换端点、密钥，并按供应商实际输出设置 `--dimension`；1536 是 CLI 默认值，不代表供应商一定返回该维度。服务密钥与 embedding 密钥用途不同。
+Bash 用 `export NAME=value` 设置同名变量。替换 workspace endpoint 和密钥，并按 Qwen 模型支持值配置维度；`1024` 是推荐默认值。服务密钥与 embedding 密钥用途不同。
 
-competition 模式经 OpenAI SDK 调用兼容 embedding API，Add 与 Search 都可能发供应商请求并产生费用；失败会报错，不静默换成哈希向量。尚未验证特定官方端点。当前写入与检索逻辑不调用 LLM。
+`qwen3.7-text-embedding` 使用 DashScope 原生请求体，最多 20 条一批；写入按 `document` 类型，检索按 `query` 类型。也可把模型设为 `text-embedding-v4` 使用 OpenAI-compatible 适配器。Add 与 Search 都可能请求供应商并产生费用；失败会报错，不静默换成哈希向量。文本、决策模型只在分别运行 RSI advisor 或旧 SGA LLM fusion 时调用。
 
 先用独立数据库测试向量模式：从 sparse-dev 切换不会自动给已有记录补向量。模型 fingerprint 改变后，旧向量不会自动转换，需从原始历史重建到新库。
 

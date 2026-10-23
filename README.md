@@ -87,7 +87,7 @@ Invoke-RestMethod http://127.0.0.1:8000/health
 | Claude Code / Codex / OpenCode 用新版记忆 | HTTP 客户端 + Agent shell/tool | 按[通用客户端与提示词](docs/coding-memory-guide.md#4-如何接入其他-agent)调用；目前没有自动安装的新版 MCP 桥 |
 | 使用原有 DAG、反馈与 ToolBP | `dmsa-mcp-server` 的 7 个工具 | 见[原有 MCP 路径](docs/coding-memory-guide.md#7-原有-mcp-能力如何使用) |
 
-真实向量模式使用 `--profile competition`，要求配置兼容端点、独立 embedding key、`text-embedding-v4` 与实际向量维度，见[指南](docs/coding-memory-guide.md#22-真实向量模式)。这只是模型配置约束，尚未完成官方端点联调或取得比赛成绩。
+真实向量模式使用 `--profile competition`，支持 `qwen3.7-text-embedding` 的 DashScope 原生端点及兼容入口 `text-embedding-v4`。离线 RSI advisor 可用独立 decision/text chat 模型，但模型仅能在规则候选内选择，策略仍需经过固定回放门禁。配置和 Compose 部署见[快速使用](docs/quickstart.md)。尚未使用真实密钥完成供应商端点联调或取得比赛成绩。
 
 ## 如何验证
 

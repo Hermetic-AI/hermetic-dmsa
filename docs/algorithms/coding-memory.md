@@ -13,6 +13,17 @@ scope 编码为独立全文词项，与查询联合匹配后才应用候选上�
 稳定的 reciprocal-rank fusion (RRF) 合并；选取阶段按会话限额和字符预算控制重复。
 证据文本包含 request/session/message 及字符 offset 引用。
 
+FTS5 虚表使用 `tokenize='trigram'`（`src/dmsa/memory/coding/schema.py`）。`unicode61` 把
+一整段无空格文本当成单一 token，中文查询因此零召回；trigram 按字符三元组建索引，
+CJK 与 ASCII 混排都能命中，并支持子串匹配。三元组带来一个下限：任何短于 3 个字符的词项
+没有对应三元组，例如 `db`、`脱敏`、`游标`。`tokenize.query_terms` 在查询侧把 CJK 连续段
+展开成滑窗三元组、ASCII 段保留整词，去重后上限 64 个词项，再以 `OR` 组合进带 scope 约束的
+MATCH 表达式按 BM25 排序；短于窗口的词项交给 `storage_queries.substring_candidates` 的
+LIKE 兜底通道，同 scope 内对 `text/paths/symbols` 做转义后的字面子串匹配并以 `candidate_limit`
+限额，RRF 权重沿用 `sparse_weight`。LIKE 是 scope 内全表扫描，成本随该 scope 切片数线性增长，
+因此只在查询确实包含短词项时才运行。旧库分词器不匹配时，初始化会删除触发器和虚表，
+按 trigram 重建并 `rebuild`，`chunks` 原文与稳定 ID 保持不变。
+
 确定性 `ExperienceCard` 视图从每个候选来源切片中抽取显式标记的症状、根因、动作、失败尝试、
 验证和条件行，并保留消息序号、原始字符区间、路径、符号与 outcome。它不调用模型、不执行文本中
 出现的命令，也不把推断或自述升级为事实；没有显式槽位时保留完整来源切片作为唯一 evidence。

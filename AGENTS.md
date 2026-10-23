@@ -36,6 +36,18 @@ L5 integrations/*   只能 import L4（通过 MCP 协议，不直接 import dmsa
 - 端到端测试在 `tests/test_end_to_end.py`
 - 覆盖率门禁 80%（`pyproject.toml` 配置）
 
+## Codex 编码记忆
+
+- Codex 通过 `dmsa-coding-memory` stdio MCP 连接本项目的 CodingMemory。
+- 开始本项目的编码任务前，调用 `dmsa_coding_memory_search` 检索类似缺陷、根因、设计约束和验证经验；把命中内容当作证据，不盲目照搬。
+- 任务完成并验证后，调用 `dmsa_coding_memory_record` 写入简洁、可复用的根因、改动与测试结果；不要保存密钥、个人信息或未经验证的猜测。
+- `dmsa_coding_memory_status` 可用于确认连接和项目 scope。记忆数据库保存在用户目录，不属于仓库内容。
+- 统一 HTTP 模式下，检索返回 `trace_id`。任务验证后，调用新增的
+  `dmsa_coding_memory_feedback`，将 trace 与 success/failure 关联；只有明确知道
+  检索失败原因时才填 exact_miss/redundancy/missing_context，否则使用 unknown。
+  relevant_ids 必须是人工或 Agent 确认相关的来源 ID，禁止伪造标签以通过 RSI 门禁。
+  该反馈将触发受回放门禁保护的策略进化。
+
 ## 提交
 
 - Conventional Commits：`feat:` / `fix:` / `docs:` / `refactor:` / `test:` / `chore:`

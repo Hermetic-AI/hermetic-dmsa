@@ -1,5 +1,10 @@
 ## Coding Memory HTTP API (development subset)
 
+集成模式见 [DMSA + RSI](integrated-rsi.md)。`create_app(memory, api_key, rsi=None)`
+可注入 `IntegratedRSI(memory, models=False)`。启用时 `/search` 额外返回 `trace_id`；
+认证 `/feedback` 保存标签并自动提案、回放和门禁激活；`/rsi/evolve` 可重试，
+`/rsi/rollback` 只接受当前 scope 已保存版本。模型开关不影响固定门禁。
+
 需要完整请求/响应、运行命令与 Agent 测试步骤，请先看 [Coding Memory 实操指南](coding-memory-guide.md)。
 
 `from dmsa.mcp_server.http import create_app` 提供无认证 `GET
@@ -65,14 +70,17 @@ policy 可用于配对检索，不会修改实例默认策略。`delete_scope(us
 `corpus_state(user_ids)` 返回同一事务读取的 `CorpusState(revision, fingerprint)`，
 `corpus_fingerprint(user_ids)` 为其指纹快捷方式，`close()` 关闭连接。
 校验错误抛出 `CodingMemoryValidationError`。可选 embedder 要求 fingerprint/name、dimension
-和 `embed_batch(texts)`；向量与 fingerprint 一起持久化，scope 超出 policy 的
+和 `embed_batch(texts)`；可选 `embed_query(text)` 允许非对称 query/document embedding。
+向量与 fingerprint 一起持久化，scope 超出 policy 的
 `dense_scan_limit` 时默认 SQLite dense 检索拒绝运行。可选 `VectorIndex` 实现通过
 scope/fingerprint 过滤召回向量候选；`QdrantVectorIndex(url, timeout=5, api_key=None)` 需
 安装 `hermetic-dmsa[vector]`。Qdrant 候选经 SQLite 再次验证 scope。细节与适用边界见
 `docs/algorithms/coding-memory.md`。
 `max_chars` 按 Python 字符长度计量，`max_tokens` 使用公开的
 `dmsa.memory.estimate_tokens` 确定性 UTF-8 字节预算代理，并非模型 tokenizer。SQLite 使用带 scope
-约束的索引与 FTS 结构；存储初始化会执行幂等 schema migration，旧数据库可直接打开。
+约束的索引与 FTS 结构；FTS 虚表按 `trigram` 三元组分词，所以中英混排查询可召回，短于 3 个
+字符的词项（如 `db`、两字中文词）改由 scope 内 LIKE 子串通道兜底。存储初始化会执行幂等
+schema migration，旧数据库可直接打开，分词器为 `unicode61` 的历史库会被自动重建索引。
 `SearchPolicy.experience_weight`（默认 `1.0`，范围 `[0, 10]`）调节可追溯经验卡的轻量
 适用性先验；设为 `0` 可在配对回放中禁用该 rerank，而不改变来源记录或召回通道。
 
@@ -99,7 +107,17 @@ parts are rejected. Search is isolated by `user_id`; only empty `options` is
 currently supported. The `/v1/runs` protocol is not implemented.
 
 Install `hermetic-dmsa[http]` and run `dmsa-memory-http --profile sparse-dev`
-for the explicit local sparse-only profile. `--profile competition` requires a
-configured OpenAI-compatible endpoint and API key, model `text-embedding-v4`,
-and a positive dimension configured with `--dimension` (default 1536). No official provider compatibility or competition scale is
-claimed.
+for the explicit local sparse-only profile. `--profile competition` supports
+`text-embedding-v4` over the existing OpenAI-compatible adapter, or
+`qwen3.7-text-embedding` over the DashScope native API adapter. Qwen uses
+`DMSA_EMBEDDING_BASE_URL` as the exact endpoint and supports dimensions
+256/512/768/1024/1536/2048/2560; it sends document/query text types separately
+and splits batches at 20 inputs. No provider credential or runtime call is
+implicit.
+
+`dmsa.gradient.ModelAssistedPolicyProposer` selects only candidates emitted by
+deterministic `propose_policy`; outputs remain advisory and must pass `run_replay`
+and `gate`. It reads `DMSA_DECISION_BASE_URL`, `DMSA_DECISION_API_KEY`, and
+`DMSA_DECISION_MODEL`, with text explanations from `DMSA_TEXT_*`. It does not
+automatically activate a policy. No official provider compatibility or
+competition scale is claimed.

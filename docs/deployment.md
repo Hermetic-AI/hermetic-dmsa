@@ -16,12 +16,13 @@ docker compose exec -T memory dmsa-memory-smoke
 ```
 
 默认 sparse-dev 不调用 LLM / embedding。命名卷 `memory-data` 保存
-`/data/coding.sqlite3`、WAL 与共享内存文件。服务仅发布到 `127.0.0.1:8000`。
+`/data/coding.sqlite3`、WAL 与共享内存文件。记忆 API 仅发布到
+`127.0.0.1:8000`；`memory-browser` 以只读方式挂载同一卷并发布到
+`127.0.0.1:8765`。
 镜像以 UID/GID 10001 运行，根文件系统只读，移除 Linux capabilities，并使用
 no-new-privileges；仅 `/data` 和临时 `/tmp` 可写。无需在镜像中放凭据。
 
-默认服务密钥 `local-development-only-change-me` 仅用于本机首次验证；
-生产部署复制 `.env.example` 到 `.env`，设置随机的 `DMSA_MEMORY_API_KEY`。
+复制 `.env.example` 到 `.env`，并设置随机的 `DMSA_MEMORY_API_KEY`。
 如需发布到其他接口，可设置 DMSA_HTTP_BIND；公网部署应通过 TLS 反向代理接入，
 并按业务信任边界限制调用方。API key 授权访问整个服务，user_id 不是用户认证。
 `.env`、secrets/ 和本地数据库均不进入 Git 或 Docker 构建上下文。
@@ -61,18 +62,21 @@ docker compose exec -T memory dmsa-memory-smoke
 | 配置 | 要求 |
 |---|---|
 | DMSA_MEMORY_API_KEY | 非空服务密钥，无开发默认值 |
-| DMSA_EMBEDDING_BASE_URL | 显式 HTTP(S) 兼容端点，不能含用户名/密码、查询或 fragment |
+| DMSA_EMBEDDING_BASE_URL | 显式 HTTPS embedding endpoint，不能含凭据、查询或 fragment |
 | DMSA_EMBEDDING_API_KEY | 非空 embedding 供应商密钥 |
-| DMSA_EMBEDDING_MODEL | 显式等于 text-embedding-v4 |
-| DMSA_EMBEDDING_DIMENSION | 正整数，默认 1536，必须匹配供应商 |
+| DMSA_EMBEDDING_MODEL | `qwen3.7-text-embedding` 或 `text-embedding-v4` |
+| DMSA_EMBEDDING_DIMENSION | Qwen 默认 1024，且须匹配模型与 Qdrant collection |
 
 缺项会拒绝启动，不创建数据库、不监听端口，也不回退至 sparse。
-Competition 使用独立 `competition-data` 卷，避免与 sparse 语料混用；运行时
+`.env.example` 提供用户指定的 Qwen DashScope 原生端点；写入按最多 20 条分批，
+并把检索文本与底库文本分别标注为 `query` / `document`。Competition 使用独立
+`competition-data` 卷，避免与 sparse 语料混用；运行时
 供应商错误不会降级为哈希向量。健康检查不验证 key 是否被供应商接受；完整 smoke
-会真实调用 embedding，可能产生费用。未声称官方端点兼容性或比赛成绩。
+会真实调用 embedding，可能产生费用。未声称比赛成绩。
 Competition overlay 也启动只处于 Compose 内部网络的 Qdrant，持久卷为
 `qdrant-data`，不发布 Qdrant host port。`DMSA_QDRANT_API_KEY` 可配置受保护的外部
-Qdrant。Embedding 请求使用 60 秒超时与最多两次 SDK 重试；Qdrant 幂等写入/检索/删除
+Qdrant。Qwen embedding 请求超时为 60 秒且不会自动重试付费调用；OpenAI-compatible
+v4 使用 SDK 重试。Qdrant 幂等写入/检索/删除
 采用有界指数退避。外部故障会显式失败，不降级为 sparse。
 
 正式部署可使用 Compose secrets。创建 Git 忽略的 `secrets/memory_api_key` 和

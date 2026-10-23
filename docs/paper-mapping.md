@@ -1,5 +1,9 @@
 # Paper Mapping — 论文对应关系
 
+`gradient/integrated.py`、`gradient/feedback.py`：检索策略内循环的运行时集成，
+将显式反馈、模型受限提案、固定回放门禁、版本启用及回滚连接到 CodingMemory。
+该机制验证检索召回代理指标，不构成代码任务成功率的实证结论。
+
 > hermetic-dmsa 的每个模块对应论文哪一章 / 哪个创新点。
 
 ## 论文 4 大创新点 vs hermetic-dmsa
@@ -25,10 +29,12 @@
 Coding Memory 的 `dmsa.memory.coding.experiences` 是面向开源工程记忆赛道的研究原型，
 不属于上述论文已验证的 DAG/SGA 创新点。它从切片原文形成保守的 facet 视图并作轻量检索先验；
 其效果须由代理噪声基准和真实 Coding Agent 配对任务测量，不应作为论文结果引用。
+同层的 `coding.tokenize` 与 `coding.storage_queries` 稀疏通道（trigram 分词 + 短词 LIKE 兜底）
+是可检索性工程修正，同样不对应论文创新点，只影响召回通道的实现细节。
 
 ### L2 梯度聚合（论文 §5 SGA）
 
-| `src/dmsa/gradient/policy.py`, `replay.py` | 离线检索策略提案与配对门禁；工程评测闭环，不声称论文实验结果或 coding 成功率 | 
+| `src/dmsa/gradient/policy.py`, `replay.py`, `model_advisor.py` | 离线检索候选与配对门禁；可选模型仅做候选选择/解释，属于工程评测闭环，不声称论文实验结果或 coding 成功率 |
 
 | 文件 | 对应论文 |
 |---|---|
