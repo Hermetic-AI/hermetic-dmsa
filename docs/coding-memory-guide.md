@@ -44,7 +44,7 @@ flowchart LR
 
 ### 1.2 Search 怎么找
 
-在指定 `user_id` 内，用路径/符号等精确词项、FTS5 全文和可选向量召回，经 RRF 融合排序。之后去重、限制单个 session 的贡献，按策略补入邻近片段，并遵守返回预算。
+在指定 `user_id` 内，用路径/符号等精确词项、FTS5 全文和可选向量召回，经 RRF 融合排序。之后去重、限制单个 session 的贡献，按策略补入邻近片段，并遵守返回预算。显式 `reported_success` 来源有极小加分，`observed_failure` 来源轻微降权，避免旧失败尝试排在新修复之前；该先验只调整已有候选，不负责召回。
 
 全文索引使用 `trigram` 三元组分词，中文、日文和代码标识符都能召回；短于 3 个字符的词项（例如两字中文词、`db`）走同一权重下的 LIKE 子串兜底通道，只在查询包含短词项时扫描该 scope。
 
@@ -54,14 +54,14 @@ flowchart LR
 |---|---:|---|
 | 三通道权重 | 各 1.0 | 无 embedder 时不运行 dense |
 | `experience_weight` | 1.0 | 可追溯经验卡适用性排序先验；0 可作为关闭该先验的对照 |
-| `candidate_limit` | 80 | 各通道候选上限 |
+| `candidate_limit` | 240 | 各通道候选上限 |
 | `neighbor_window` | 1 | 邻近片段窗口 |
-| `per_session_limit` | 4 | 单会话返回片段限额 |
-| `redundancy_threshold` | 0.88 | 词项相似度去重阈值 |
-| `max_chars` / `max_tokens` | 各 12,000 | 返回预算，包含来源头 |
+| `per_session_limit` | 16 | 单会话返回片段限额 |
+| `redundancy_threshold` | 0.93 | 词项相似度去重阈值 |
+| `max_chars` / `max_tokens` | 120,000 字符 / 32,000 token | 返回预算，包含来源头 |
 | `dense_scan_limit` | 10,000 | scope 向量扫描上限 |
 
-`max_tokens` 当前按 UTF-8 字节数计量，是保守代理，不是指定模型 tokenizer 的精确计数。条目无法完整装入预算时会跳过，所以可能少于 `top_k`。
+`max_tokens` 用字符与 UTF-8 字节混合近似模型 token（CJK 约 1 字 1 token，ASCII 与代码约 4 字节 1 token），仍不是指定 tokenizer 的精确计数。预算不足以完整装入末尾条目时，会保留正文前缀并追加 `[truncated]` 标记，而不是整条丢弃，因此返回条数可以逼近 `top_k`。
 
 ### 1.3 RSI 改什么
 
@@ -385,6 +385,16 @@ LangChain/LangGraph、AutoGen 或自建 function-calling Agent 都可在宿主�
 保留同一批相关历史，逐步加入无关项目、相似错误签名、过期做法和明确失败尝试。各档固定任务、相关切片标注、模型与预算，测 top-k 相关召回、无关条目占比和实际任务测试通过率。
 
 本地四个比例不等于复现官方四档噪声，也不能替代官方 300 实例成绩。
+
+### 5.4 本地自出题自解题闭环
+
+`benchmarks/coding/selftest` 自己生成任务、自己解题：写入合成仓库，按平台语义 Add 相关历史与四档噪声，调用真实 Search，按排名应用证据里的代码块，并运行真实 pytest 判定。它同时跑旧默认（baseline）与当前默认（tuned）两臂，用同一批任务对照。
+
+```powershell
+.venv/Scripts/python.exe -m benchmarks.coding.selftest --seed 17 --attempts 10
+```
+
+报告写到 `benchmarks/results/coding-selftest.json` 与同名 `.md`，含每档噪声的命中数、证据 token、gold 排名、实际尝试次数与测试结果。`official_score` 固定为 `null`：这是本地合成代理，不是官方分数。固定 seed 可复现；合成历史不得当作项目真实经验引用。
 
 ## 6. 如何查看与验证
 

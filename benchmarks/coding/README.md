@@ -58,3 +58,41 @@ Sparse-only runs need no credentials.
 `target_path` and `evidence` are gold labels, never included in the agent task
 payload. Query text itself may mention a path, just as a real benchmark prompt
 may. Synthetic evidence must not be interpreted as validated project history.
+
+## Local self-generated selftest
+
+`benchmarks/coding/selftest` is a closed loop with no external model calls: it
+generates three task families (clamp bug, slugify feature, retry-cap bug),
+writes a real temporary repo, Adds relevant history plus four noise levels
+through `CodingMemory`, runs the real `search` path, applies fenced
+`path=`-tagged code blocks from the ranked evidence, and judges with real
+`pytest` subprocesses. Each case starts from a failing test; the gold patch is
+the final message of a long debugging session, mirroring the platform symptom
+where only four hits per session were returned.
+
+```powershell
+.venv/Scripts/python.exe -m benchmarks.coding.selftest --seed 17 --attempts 10
+.venv/Scripts/python.exe -m benchmarks.coding.selftest --seed 42 --out benchmarks/results/coding-selftest-seed42.json
+```
+
+It compares two arms on the same tasks: `baseline` pins the previous defaults
+(candidate 80, 12,000 chars, 12,000 tokens, 4 hits per session, 0.88
+redundancy) and `tuned` uses `SearchPolicy()` defaults. Noise levels add 0, 20,
+100, 400, and 1,000 history messages; noise messages are grouped five per
+session. Output marks `official_score` as `null`; it is a local synthetic proxy,
+not the competition score.
+
+Measured on seeds 17/42/101 (9 runs per cell: 3 seeds × 3 tasks), with
+`--attempts 10`:
+
+| Arm | relevant_only | L1 | L2 | L3 | L4 | Mean hits | Mean evidence tokens |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| baseline | 0.33 | 0.33 | 0.56 | 0.89 | 1.00 | 22.5 | 5,398 |
+| tuned | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 68.1 | 16,899 |
+
+Values are end-to-end resolved rates (real pytest). The baseline loses the gold
+patch when the final fix is the ninth message of a session and the per-session
+cap is four; tuned keeps up to 16 per session and packs the larger budget.
+Both arms stay far below the tuned 32,000-token cap. Results are deterministic
+per seed but only cover three synthetic families; they do not reproduce the
+official 0.00 smoke result, whose task data is unavailable.

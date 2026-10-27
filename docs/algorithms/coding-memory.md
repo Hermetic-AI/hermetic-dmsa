@@ -10,7 +10,8 @@ SQLite WAL 事务同时写入幂等 request、原始消息、FTS5 切片和 scop
 普通 `chunks` 表用主键、scope 和邻居复合索引保存元数据，FTS5 通过 rowid 连接；
 scope 编码为独立全文词项，与查询联合匹配后才应用候选上限，避免扫描其他用户的全部切片。
 早期直接存入 FTS 虚表的数据库会原子迁移并保留稳定 ID。精确路径/符号与 FTS 通道通过
-稳定的 reciprocal-rank fusion (RRF) 合并；选取阶段按会话限额和字符预算控制重复。
+稳定的 reciprocal-rank fusion (RRF) 合并；精确词项通道按命中词项数排序，子串通道按命中
+词项数排序后再截断候选。选取阶段按会话限额和字符预算控制重复。
 证据文本包含 request/session/message 及字符 offset 引用。
 
 FTS5 虚表使用 `tokenize='trigram'`（`src/dmsa/memory/coding/schema.py`）。`unicode61` 把
@@ -28,7 +29,8 @@ LIKE 兜底通道，同 scope 内对 `text/paths/symbols` 做转义后的字面�
 验证和条件行，并保留消息序号、原始字符区间、路径、符号与 outcome。它不调用模型、不执行文本中
 出现的命令，也不把推断或自述升级为事实；没有显式槽位时保留完整来源切片作为唯一 evidence。
 该视图在当前版本按需重建，没有独立数据库副本。检索以很小的确定性 prior 区分显式 bug/feature
-问题，并只在查询明确询问失败经验时提升 failed-attempt 卡片；prior 不会创建召回候选或覆盖 RRF，
+问题，并只在查询明确询问失败经验时提升 failed-attempt 卡片；`reported_success` 来源获得极小
+加分，`observed_failure` 来源轻微降权，但 prior 不会创建召回候选或覆盖 RRF，
 因此尚不能解决语义相似但根因相反、版本冲突或大语料候选池漏召回。这是可解释的首个切片级基线，
 不是完整的 episode/card 检索架构，必须由四档噪声代理集和实际 Coding Agent 对照实验验证。
 
@@ -50,9 +52,10 @@ upsert Qdrant，再提交 SQLite；失败写入可能留孤儿向量，但孤儿
 离线配对回放应在两臂前后读取相同 scope 集合并确认 fingerprint 未变化。policy 的
 `max_chars` 与 `max_tokens` 均是输出预算，权重必须有限且有界。
 
-`estimate_tokens(text)` 当前按 UTF-8 字节计数，作为文本 token 的保守预算代理，覆盖中文、
-长标识符以及来源头部；并非指定模型 tokenizer 的精确计数。检索与回放共用这一函数。
-单条证据无法完整装入剩余预算时跳过，不返回截断后失真的来源片段。
+`estimate_tokens(text)` 用字符与 UTF-8 字节混合近似模型 token（CJK 约 1 字 1 token，
+ASCII 与代码约 4 字节 1 token），覆盖中文、长标识符以及来源头部；它不是指定 tokenizer
+的精确计数。检索与回放共用这一函数。单条证据无法完整装入剩余预算时，保留正文前缀并追加
+`[truncated]` 标记，而不是整条丢弃；剩余空间不足以保留 160 字符可辨识正文时才跳过。
 
 同一实例的读取与写入事务共享 RLock，搜索和幂等预检不能看到该连接的未提交数据。
 embedding 在写事务之外执行，事务内再次检查幂等键。多个实例通过 SQLite WAL 和 busy timeout

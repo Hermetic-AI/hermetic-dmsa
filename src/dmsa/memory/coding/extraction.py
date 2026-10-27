@@ -10,17 +10,29 @@ from dmsa.memory.coding.models import SourceMessage
 CHUNK_SIZE = 1800
 OVERLAP = 160
 PATH_RE = re.compile(r"(?<![\w])(?:[\w.-]+/)+[\w.-]+(?:\.[\w.-]+)?")
-SYMBOL_RE = re.compile(r"\b[A-Za-z_][A-Za-z0-9_]{2,}\b")
+SYMBOL_RE = re.compile(
+    r"\b(?:"
+    r"[a-z][a-z0-9]*(?:_[a-z0-9]+)+"  # snake_case
+    r"|[A-Z][a-z0-9]+(?:[A-Z][a-z0-9]+)+"  # PascalCase
+    r"|[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+"  # CONSTANT_CASE
+    r"|[a-z][a-z0-9]*[A-Z][A-Za-z0-9]*"  # camelCase
+    r"|[A-Za-z_][A-Za-z0-9_]*\d[A-Za-z0-9_]*"  # 含数字的标识符
+    r")\b"
+)
+DEFINITION_RE = re.compile(
+    r"\b(?:def|class|function|func|fn|struct|interface|enum)\s+"
+    r"([A-Za-z_][A-Za-z0-9_]*)"
+)
 ERROR_RE = re.compile(
     r"(?:Traceback \(most recent call last\)|"
     r"\b[A-Za-z_][\w.]*Error:\s|\b[A-Za-z_][\w.]*Exception:\s|"
-    r"^\s*FAILED(?:\s|:))",
+    r"^\s*FAILED(?:\s|:)|未通过|测试失败)",
     re.I | re.M,
 )
-PASS_RE = re.compile(r"(?:\bpassed\b|\bPASS\b|tests? passed)", re.I)
+PASS_RE = re.compile(r"(?:\bpassed\b|\bPASS\b|tests? passed|全部通过|验证通过|测试通过)", re.I)
 NEGATED_PASS_RE = re.compile(
     r"\b(?:not|never|did(?:n't| not)|hasn't|have not|wasn't|were not)\s+"
-    r"(?:\w+\s+){0,2}pass(?:ed)?\b",
+    r"(?:\w+\s+){0,2}pass(?:ed)?\b|(?:未|没有|并不|尚未|并未)(?:全部)?通过",
     re.I,
 )
 
@@ -54,11 +66,7 @@ def extract(messages: tuple[SourceMessage, ...]) -> list[Chunk]:
             outcome = "unknown"
             if ERROR_RE.search(text):
                 outcome = "observed_failure"
-            elif (
-                PASS_RE.search(text)
-                and not NEGATED_PASS_RE.search(text)
-                and message.role.lower() in {"tool", "system"}
-            ):
+            elif PASS_RE.search(text) and not NEGATED_PASS_RE.search(text):
                 outcome = "reported_success"
             chunks.append(
                 Chunk(
@@ -67,7 +75,11 @@ def extract(messages: tuple[SourceMessage, ...]) -> list[Chunk]:
                     end,
                     text,
                     tuple(dict.fromkeys(PATH_RE.findall(text))),
-                    tuple(dict.fromkeys(SYMBOL_RE.findall(text))),
+                    tuple(
+                        dict.fromkeys(
+                            (*SYMBOL_RE.findall(text), *DEFINITION_RE.findall(text))
+                        )
+                    ),
                     outcome,
                 )
             )

@@ -67,13 +67,13 @@ class SearchPolicy:
     sparse_weight: float = 1.0
     dense_weight: float = 1.0
     experience_weight: float = 1.0
-    candidate_limit: int = 80
+    candidate_limit: int = 240
     neighbor_window: int = 1
-    max_chars: int = 12000
-    per_session_limit: int = 4
-    redundancy_threshold: float = 0.88
+    max_chars: int = 120000
+    per_session_limit: int = 16
+    redundancy_threshold: float = 0.93
     dense_scan_limit: int = 10000
-    max_tokens: int = 12000
+    max_tokens: int = 32000
 
     def __post_init__(self) -> None:
         """拒绝非有限权重、布尔整数和无界策略值."""

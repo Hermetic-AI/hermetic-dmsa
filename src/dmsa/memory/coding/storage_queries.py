@@ -23,21 +23,19 @@ def substring_candidates(
     if not short:
         return []
     one = "(text LIKE ? ESCAPE '\\' OR paths LIKE ? ESCAPE '\\' OR symbols LIKE ? ESCAPE '\\')"
+    bound = tuple(
+        value
+        for term in short
+        for value in (_like_pattern(term), _like_pattern(term), _like_pattern(term))
+    )
+    score = " + ".join(f"(CASE WHEN {one} THEN 1 ELSE 0 END)" for _ in short)
     try:
         return list(
             db.execute(
-                "SELECT * FROM chunks WHERE user_id=? AND ("
-                + " OR ".join(one for _ in short)
-                + ") ORDER BY id LIMIT ?",
-                (
-                    user_id,
-                    *(
-                        value
-                        for term in short
-                        for value in (_like_pattern(term), _like_pattern(term), _like_pattern(term))
-                    ),
-                    limit,
-                ),
+                "SELECT *, (" + score + ") AS match_hits FROM chunks "
+                "WHERE user_id=? AND (" + " OR ".join(one for _ in short) + ") "
+                "ORDER BY match_hits DESC, id LIMIT ?",
+                (*bound, user_id, *bound, limit),
             )
         )
     except sqlite3.OperationalError as exc:

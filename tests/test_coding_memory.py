@@ -76,10 +76,10 @@ def test_outcome_negative_example_and_long_content(tmp_path) -> None:
 def test_exact_terms_deduplicate_after_case_normalization(tmp_path) -> None:
     """大小写不同的同词项写入单条精确索引记录。"""
     memory = CodingMemory(tmp_path / "case-terms.db")
-    memory.add("r", "u", "s", [SourceMessage("user", "Foo foo")])
-    assert memory.search("foo", "u", 2)
+    memory.add("r", "u", "s", [SourceMessage("user", "cache_loader CACHE_LOADER")])
+    assert memory.search("cache_loader", "u", 2)
     count = memory.store.db.execute(
-        "SELECT count(*) FROM exact_terms WHERE term='foo'"
+        "SELECT count(*) FROM exact_terms WHERE term='cache_loader'"
     ).fetchone()[0]
     assert count == 1
     memory.close()
@@ -147,6 +147,14 @@ def test_negated_test_success_remains_unknown() -> None:
     """否定测试通过的描述不能标为成功。"""
     chunks = extract((SourceMessage("tool", "tests not passed"),))
     assert chunks[0].outcome == "unknown"
+
+
+def test_assistant_outcome_labels_follow_explicit_claims() -> None:
+    """assistant 的显式通过/失败文本也进入结果标签, 仅表示来源声称."""
+    success = extract((SourceMessage("assistant", "验证：pytest 全部通过。"),))[0]  # noqa: RUF001
+    assert success.outcome == "reported_success"
+    failed = extract((SourceMessage("assistant", "旧会话尝试未通过验证。"),))[0]
+    assert failed.outcome == "observed_failure"
 
 
 def test_top_k_policy_override_and_delete(tmp_path) -> None:

@@ -26,6 +26,15 @@ Coding Memory 四档噪声合成代理基准（不需要 API key；详情见
 挑战赛分数。真实 Coding Agent 通过安全的 `--agent-argv` JSON stdin/stdout 合同接入；
 模型兼容 API 需要显式指定 `--model` 和凭据环境变量。
 
+自出题自解题闭环（合成仓库 + 真实 Search + 真实 pytest；不需要 API key）：
+
+```powershell
+.venv/Scripts/python.exe -m benchmarks.coding.selftest --seed 17 --attempts 10
+```
+
+它用同一批任务对照旧默认与当前默认策略，报告每档噪声的召回、证据 token、
+实际打补丁次数与测试结果；`official_score` 固定为 `null`，不是官方成绩。
+
 结果落盘 `benchmarks/results/*.json`。
 
 ## Benchmark 1：SGA vs TextGrad 式归约（bench_sga_conflict.py）

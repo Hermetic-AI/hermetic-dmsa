@@ -66,8 +66,12 @@ def test_budget_counts_cjk_and_long_code_including_source_header(tmp_path, text)
     memory.add("r", "u", "s", [SourceMessage("user", "needle " + text)])
     full = memory.search("needle", "u", 1)[0]
     size = estimate_tokens(full.content)
-    assert size == len(full.content.encode("utf-8"))
-    assert memory.search("needle", "u", 1, SearchPolicy(max_tokens=size - 1)) == []
+    assert size > 0
+    assert size < len(full.content.encode("utf-8"))
+    partial = memory.search("needle", "u", 1, SearchPolicy(max_tokens=size - 1))
+    assert len(partial) == 1
+    assert estimate_tokens(partial[0].content) < size
+    assert partial[0].content.endswith("[truncated]")
     assert memory.search("needle", "u", 1, SearchPolicy(max_tokens=size)) == [full]
     memory.close()
 

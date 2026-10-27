@@ -182,9 +182,10 @@ class CodingStore:
         placeholders = ",".join("?" for _ in values)
         return list(
             self.db.execute(
-                "SELECT c.* FROM exact_terms e JOIN chunks c ON c.id=e.chunk_id "
+                "SELECT c.*, COUNT(*) AS match_hits FROM exact_terms e "
+                "JOIN chunks c ON c.id=e.chunk_id "
                 "WHERE e.user_id=? AND c.user_id=? AND e.term IN (" + placeholders + ") "
-                "GROUP BY c.id ORDER BY c.id LIMIT ?",
+                "GROUP BY c.id ORDER BY match_hits DESC, c.id LIMIT ?",
                 (user_id, user_id, *(term.lower() for term in values), limit),
             )
         )

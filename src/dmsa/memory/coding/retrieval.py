@@ -34,8 +34,15 @@ def _tokens(text: str) -> set[str]:
     return set(re.findall(r"[\w./-]+", text.lower()))
 
 
+# 显式结果标签只做小幅排序先验: 声称成功的来源优先, 已观测失败的来源降权。
+_OUTCOME_BONUS = {"reported_success": 0.004, "observed_failure": -0.002}
+
+
 class CodingRetriever:
     """基于稳定 RRF 和确定性证据预算的检索器."""
+
+    # 截断后的正文短于该值时直接放弃, 避免只有来源头没有内容的噪声条目。
+    MIN_TRUNCATED_CHARS = 160
 
     def __init__(
         self, store: CodingStore, embedder: Embedder | None, vector_index: VectorIndex | None = None
@@ -97,6 +104,27 @@ class CodingRetriever:
         for rank, row in enumerate(rows, 1):
             ranks[str(row["id"])] += weight / (60 + rank)
 
+    def _fit(
+        self, source: str, body: str, char_budget: int, token_budget: int
+    ) -> str | None:
+        """把正文裁到剩余预算内; 预算不足时保留可辨识前缀并显式标记截断."""
+        marker = "\n[truncated]"
+        room = min(len(body), char_budget - len(source) - len(marker))
+        if room < self.MIN_TRUNCATED_CHARS:
+            return None
+        if estimate_tokens(source + body[:room] + marker) <= token_budget:
+            return source + body[:room] + marker
+        low, high = 0, room
+        while low < high:
+            middle = (low + high + 1) // 2
+            if estimate_tokens(source + body[:middle] + marker) <= token_budget:
+                low = middle
+            else:
+                high = middle - 1
+        if low < self.MIN_TRUNCATED_CHARS:
+            return None
+        return source + body[:low] + marker
+
     def _pack(
         self,
         user_id: str,
@@ -133,16 +161,20 @@ class CodingRetriever:
                 f"[request={row['request_id']} session={session} message={row['message_id']} "
                 f"chars={row['start']}:{row['end']} role={row['role']} outcome={row['outcome']}]\n"
             )
-            content = source + str(row["text"])
-            terms = _tokens(content)
+            body = str(row["text"])
+            terms = _tokens(body)
             if token_sets and any(
                 len(terms & existing) / max(1, len(terms | existing)) >= policy.redundancy_threshold
                 for existing in token_sets
             ):
                 continue
+            content = source + body
             size = estimate_tokens(content)
             if len(content) > char_budget or size > token_budget:
-                continue
+                truncated = self._fit(source, body, char_budget, token_budget)
+                if truncated is None:
+                    continue
+                content, size = truncated, estimate_tokens(truncated)
             selected.append(SearchHit(cid, content, ranks[cid]))
             token_sets.append(terms)
             sessions[session] += 1
@@ -222,6 +254,9 @@ class CodingRetriever:
             )
             ranks[str(row["id"])] += policy.experience_weight * applicability_adjustment(
                 query, card
+            )
+            ranks[str(row["id"])] += (
+                policy.experience_weight * _OUTCOME_BONUS.get(str(row["outcome"]), 0.0)
             )
         ordered = sorted(ranks, key=lambda key: (-ranks[key], key))
         return self._pack(user_id, ordered, ranks, top_k, policy)

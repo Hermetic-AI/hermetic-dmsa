@@ -17,6 +17,9 @@ from dmsa.gradient import (
 from dmsa.gradient.replay_models import CaseResult, ReplayReport
 from dmsa.memory import CodingMemory, SearchPolicy, SourceMessage
 
+DEFAULT_CHARS = SearchPolicy().max_chars
+DEFAULT_TOKENS = SearchPolicy().max_tokens
+
 
 def fixture_memory(tmp_path):
     memory = CodingMemory(tmp_path / "memory.sqlite")
@@ -45,8 +48,8 @@ def test_replay_promotes_and_reloads_then_rolls_back(tmp_path):
         candidate,
         cases,
         top_k=2,
-        max_chars=12000,
-        max_tokens=12000,
+        max_chars=DEFAULT_CHARS,
+        max_tokens=DEFAULT_TOKENS,
         development_only=True,
     )
     registry = PolicyRegistry(tmp_path / "registry.sqlite")
@@ -67,15 +70,23 @@ def test_replay_requires_dev_flag_and_rejects_no_change(tmp_path):
     policy = RetrievalPolicy()
     case = ReplayCase("c", "u", "alpha", ("missing-id",), "all")
     with pytest.raises(OfflineRSIError):
-        run_replay(memory, policy, policy, (case,), top_k=1, max_chars=12000, max_tokens=12000)
+        run_replay(
+            memory,
+            policy,
+            policy,
+            (case,),
+            top_k=1,
+            max_chars=DEFAULT_CHARS,
+            max_tokens=DEFAULT_TOKENS,
+        )
     report = run_replay(
         memory,
         policy,
         policy,
         (case,),
         top_k=1,
-        max_chars=12000,
-        max_tokens=12000,
+        max_chars=DEFAULT_CHARS,
+        max_tokens=DEFAULT_TOKENS,
         development_only=True,
     )
     assert not gate(report)
@@ -97,7 +108,7 @@ def test_budget_and_report_binding(tmp_path):
             (ReplayCase("c", "u", "alpha", (), "s"),),
             top_k=1,
             max_chars=1,
-            max_tokens=12000,
+            max_tokens=DEFAULT_TOKENS,
             development_only=True,
         )
     registry = PolicyRegistry(tmp_path / "registry.sqlite")
@@ -120,8 +131,8 @@ def test_promotion_rejects_stale_baseline_and_duplicate_cases(tmp_path):
             candidate,
             (case, case),
             top_k=2,
-            max_chars=12000,
-            max_tokens=12000,
+            max_chars=DEFAULT_CHARS,
+            max_tokens=DEFAULT_TOKENS,
             development_only=True,
         )
     report = run_replay(
@@ -130,8 +141,8 @@ def test_promotion_rejects_stale_baseline_and_duplicate_cases(tmp_path):
         candidate,
         (case,),
         top_k=2,
-        max_chars=12000,
-        max_tokens=12000,
+        max_chars=DEFAULT_CHARS,
+        max_tokens=DEFAULT_TOKENS,
         development_only=True,
     )
     registry = PolicyRegistry(tmp_path / "registry.sqlite")
@@ -182,7 +193,8 @@ def test_tampered_report_is_rejected(tmp_path):
     relevant = memory.search("alpha target", "u", 2, candidate.search)[1].id
     report = run_replay(memory, baseline, candidate,
                         (ReplayCase("c", "u", "alpha target", (relevant,), "s"),),
-                        top_k=2, max_chars=12000, max_tokens=12000, development_only=True)
+                        top_k=2, max_chars=DEFAULT_CHARS, max_tokens=DEFAULT_TOKENS,
+                        development_only=True)
     tampered = replace(report, corpus_hash="changed")
     registry = PolicyRegistry(tmp_path / "registry.sqlite")
     with pytest.raises(OfflineRSIError):
@@ -216,7 +228,8 @@ def test_replay_detects_corpus_mutation(tmp_path, monkeypatch):
     with pytest.raises(OfflineRSIError, match="corpus changed"):
         run_replay(memory, RetrievalPolicy(), RetrievalPolicy(),
                    (ReplayCase("c", "u", "alpha", ("missing",), "s"),),
-                   top_k=1, max_chars=12000, max_tokens=12000, development_only=True)
+                   top_k=1, max_chars=DEFAULT_CHARS, max_tokens=DEFAULT_TOKENS,
+                   development_only=True)
     memory.close()
 
 
@@ -225,5 +238,5 @@ def test_replay_rejects_non_integer_budget(tmp_path):
     case = ReplayCase("c", "u", "alpha", ("missing",), "s")
     with pytest.raises(OfflineRSIError, match="positive integers"):
         run_replay(memory, RetrievalPolicy(), RetrievalPolicy(), (case,),
-                   top_k=1, max_chars=True, max_tokens=12000, development_only=True)
+                   top_k=1, max_chars=True, max_tokens=DEFAULT_TOKENS, development_only=True)
     memory.close()
