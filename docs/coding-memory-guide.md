@@ -438,6 +438,35 @@ Agent 从 stdin 收到 JSON：`query`、`repo_path`、`test_file`、`target_path
 
 ## 6. 如何查看与验证
 
+### 6.0 线上自测接口
+
+生产部署（百度云 `106.12.139.107`，`/home/jensen/hermetic-dmsa`，compose 叠加 `compose.yaml` + `deploy/compose.competition.yaml` + `deploy/compose.offline.yaml`）的自测入口如下。密钥在服务器 `.env` 的 `DMSA_MEMORY_API_KEY`，不要写进仓库或日志。
+
+| 用途 | 入口 | 认证 |
+|---|---|---|
+| 健康检查 | `GET https://jensenlyz.cn/health` | 免认证，返回 `{"ok":true}` |
+| 写入记忆 | `POST https://jensenlyz.cn/v1/memories/add` | `Authorization: Bearer <key>` |
+| 检索记忆 | `POST https://jensenlyz.cn/v1/memories/search` | `Authorization: Bearer <key>` |
+| 容器内自检 | `docker compose ... exec -T memory dmsa-memory-smoke` | 容器内已带密钥 |
+| 只读记忆浏览器 | `ssh -L 18765:127.0.0.1:18765 root@106.12.139.107` 后开 `http://127.0.0.1:18765` | 仅内网 |
+| Qdrant 集合 | 容器内 `http://qdrant:6333/collections` | 仅内网，无端口映射 |
+
+```bash
+# 写入一段会话历史（同一 session 的多轮请求会合并成一条经验卡）
+curl -sS https://jensenlyz.cn/v1/memories/add \
+  -H "Authorization: Bearer $DMSA_MEMORY_API_KEY" -H "Content-Type: application/json" \
+  -d '{"request_id":"demo-1","user_id":"demo-scope","session_id":"demo",'
+     '"messages":[{"role":"user","content":"ops_0_clamp.py 的 clamp_0 对负数返回错误，需要修复。"},
+                  {"role":"assistant","content":"最终修复如下：\n```python path=ops_0_clamp.py\ndef clamp_0(value, lower, upper):\n    return max(lower, min(upper, value))\n```\n验证：pytest 全部通过。"}]}'
+
+# 检索记忆
+curl -sS https://jensenlyz.cn/v1/memories/search \
+  -H "Authorization: Bearer $DMSA_MEMORY_API_KEY" -H "Content-Type: application/json" \
+  -d '{"query":"ops_0_clamp.py clamp_0 负数 返回错误","user_id":"demo-scope","top_k":10}'
+```
+
+MCP 记忆接口（stdio 桥接同一公网服务）：`python -m dmsa.mcp_server.coding_memory`，环境变量 `DMSA_CODING_MEMORY_URL=https://jensenlyz.cn/v1/memories`、`DMSA_MEMORY_API_KEY`、`DMSA_CODING_MEMORY_SCOPE`；工具为 `dmsa_coding_memory_status` / `_record` / `_search` / `_feedback`。远程模式下的 `_search` 会返回 `trace_id`，配合 `_feedback` 可把检索与结果关联起来。
+
 ### 6.1 检查检索证据
 
 查看 /search 的完整 JSON：id、content 来源头、错误和测试原文。用不同 user_id 搜索应看不到原 scope 的记录；停止后重启同一数据库，再查同一条，检查持久性。
