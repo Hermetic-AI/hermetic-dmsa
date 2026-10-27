@@ -83,6 +83,11 @@ scope/fingerprint 过滤召回向量候选；`QdrantVectorIndex(url, timeout=5, 
 schema migration，旧数据库可直接打开，分词器为 `unicode61` 的历史库会被自动重建索引。
 `SearchPolicy.experience_weight`（默认 `1.0`，范围 `[0, 10]`）调节可追溯经验卡的轻量
 适用性先验；设为 `0` 可在配对回放中禁用该 rerank，而不改变来源记录或召回通道。
+`SearchPolicy.evidence_limit`（默认 `12`）、`score_floor_ratio`（默认 `0.45`）、
+`min_evidence`（默认 `4`）与 `per_path_limit`（默认 `6`）共同约束单次检索返回的证据条数：
+`top_k` 只是上限，返回条数还会被分数下限、单会话与单路径限额截断，避免把整段会话塞进上下文。
+写入时同一 session 的多轮消息会合并成一条 `[episode]` 会话级经验卡（症状、根因、最终补丁与
+验证结论），只有存在补丁且其后有显式验证时才生成；原始消息切片保持不变。
 
 ## Offline RSI
 

@@ -45,7 +45,10 @@ def substring_candidates(
 def sparse_candidates(
     db: sqlite3.Connection, terms: tuple[str, ...], user_id: str, limit: int
 ) -> list[sqlite3.Row]:
-    """在 FTS 虚表上按 scope 查询预展开词项并限额."""
+    """在 FTS 虚表上按 scope 查询预展开词项并限额.
+
+    路径与符号是比正文更强的定位信号, 因此 BM25 给这两列更高权重, 正文只作兜底。
+    """
     if not terms:
         return []
     expression = " OR ".join('"' + term.replace('"', '""') + '"' for term in terms)
@@ -56,7 +59,7 @@ def sparse_candidates(
             db.execute(
                 "SELECT c.* FROM chunk_fts JOIN chunks c ON c.rowid=chunk_fts.rowid "
                 "WHERE c.user_id=? AND chunk_fts MATCH ? "
-                "ORDER BY bm25(chunk_fts), c.id LIMIT ?",
+                "ORDER BY bm25(chunk_fts, 6.0, 8.0, 1.0, 0.0), c.id LIMIT ?",
                 (user_id, expression, limit),
             )
         )

@@ -29,8 +29,10 @@
 Coding Memory 的 `dmsa.memory.coding.experiences` 是面向开源工程记忆赛道的研究原型，
 不属于上述论文已验证的 DAG/SGA 创新点。它从切片原文形成保守的 facet 视图并作轻量检索先验；
 其效果须由代理噪声基准和真实 Coding Agent 配对任务测量，不应作为论文结果引用。
-同层的 `coding.tokenize` 与 `coding.storage_queries` 稀疏通道（trigram 分词 + 短词 LIKE 兜底）
+同层的 `coding.tokenize` 与 `coding.storage_queries` 稀疏通道（trigram 分词 + 标识符片段拆分 + 短词 LIKE 兜底）
 是可检索性工程修正，同样不对应论文创新点，只影响召回通道的实现细节。
+`coding.ranking` 的证据质量先验（目标路径补丁、已验证代码、失败尝试与过期写入降权）也是工程排序
+修正，不声称论文实验结果或 coding 成功率；其效果只能由代理噪声基准和真实 Coding Agent 配对任务测量。
 
 ### L2 梯度聚合（论文 §5 SGA）
 

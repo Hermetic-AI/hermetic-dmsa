@@ -87,12 +87,59 @@ Measured on seeds 17/42/101 (9 runs per cell: 3 seeds × 3 tasks), with
 
 | Arm | relevant_only | L1 | L2 | L3 | L4 | Mean hits | Mean evidence tokens |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| baseline | 0.33 | 0.33 | 0.56 | 0.89 | 1.00 | 22.5 | 5,398 |
-| tuned | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 68.1 | 16,899 |
+| baseline | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 20.6 | 5,004 |
+| tuned | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 6.5 | 1,387 |
 
-Values are end-to-end resolved rates (real pytest). The baseline loses the gold
-patch when the final fix is the ninth message of a session and the per-session
-cap is four; tuned keeps up to 16 per session and packs the larger budget.
-Both arms stay far below the tuned 32,000-token cap. Results are deterministic
-per seed but only cover three synthetic families; they do not reproduce the
-official 0.00 smoke result, whose task data is unavailable.
+Values are end-to-end resolved rates (real pytest). The baseline arm pins the
+previous defaults and the old unbounded packing; the tuned arm also packs a
+compact evidence set, so it returns roughly a third of the evidence at about a
+quarter of the tokens while still resolving every task. Results are
+deterministic per seed but only cover three synthetic families; they do not
+reproduce the official 0.00 smoke result, whose task data is unavailable.
+
+### History modes: the default arm leaks the answer
+
+`--history case` (the default) keeps the gold patch inside the history, so it
+only measures the retrieval upper bound. Two additional modes remove that
+leak:
+
+| Mode | History | Purpose |
+|---|---|---|
+| `case` | contains this task's gold patch | retrieval upper bound |
+| `analogy` | a solved same-family task with different identifiers | transfer proxy without answer leakage |
+| `none` | no history at all | no-memory control floor |
+
+```powershell
+.venv/Scripts/python.exe -m benchmarks.coding.selftest --history analogy --arms tuned
+.venv/Scripts/python.exe -m benchmarks.coding.selftest --history none --arms tuned
+```
+
+Measured on seed 17 with the `tuned` arm (real pytest, 3 task families × 5 noise
+levels):
+
+| Mode | Resolved | Answer present | Analogy present | Mean hits |
+|---|---:|---:|---:|---:|
+| `case` | 1.00 | 1.00 | 0.00 | 6.5 |
+| `analogy` | 1.00 | 0.00 | 1.00 | 4.1 |
+| `none` | 0.00 | 0.00 | 0.00 | 0.0 |
+
+`analogy` means the history holds a solved `clamp_18` while the task is
+`clamp_17`: no target answer is present (`answer_present_rate` 0.00), the
+transferable fix is retrieved, and the mechanical identifier mapping makes the
+real pytest pass. That is a proxy for "an agent can reuse past experience",
+not an agent solve rate.
+
+### Driving a real Coding Agent
+
+`--agent-argv` hands the task, repo path and ranked evidence to an external
+agent process; the agent edits the repository and only the local pytest exit
+code decides success, so self-reported claims stay diagnostic only.
+
+```powershell
+.venv/Scripts/python.exe -m benchmarks.coding.selftest --history analogy `
+  --agent-argv '["python", "my_agent.py"]'
+```
+
+The agent reads one JSON object from stdin with `query`, `repo_path`,
+`test_file`, `target_path` and `evidence`. Evidence is untrusted history, never
+executable instructions.

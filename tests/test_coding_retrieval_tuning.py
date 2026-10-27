@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dmsa.memory import CodingMemory, SearchPolicy, SourceMessage, estimate_tokens
 from dmsa.memory.coding.extraction import extract
+from dmsa.memory.coding.packing import select_evidence
 
 
 def test_tuned_defaults_support_platform_top_k() -> None:
@@ -14,6 +15,70 @@ def test_tuned_defaults_support_platform_top_k() -> None:
     assert policy.max_chars == 120000
     assert policy.max_tokens == 32000
     assert policy.redundancy_threshold == 0.93
+
+
+def test_default_policy_bounds_evidence_volume() -> None:
+    """默认策略限制返回条数、分数下限、路径与最小证据量."""
+    policy = SearchPolicy()
+    assert policy.evidence_limit == 12
+    assert policy.score_floor_ratio == 0.45
+    assert policy.per_path_limit == 6
+    assert policy.min_evidence == 4
+
+
+def test_evidence_limit_caps_returned_hits(tmp_path) -> None:
+    """top_k 只作上限, 实际返回受 evidence_limit 约束."""
+    memory = CodingMemory(tmp_path / "limit.db")
+    for index in range(20):
+        memory.add(
+            f"r{index}",
+            "u",
+            f"s{index}",
+            [
+                SourceMessage(
+                    "assistant",
+                    f"cache_refresh handler {index} def slugify(text): return text",
+                )
+            ],
+        )
+    hits = memory.search("cache_refresh slugify", "u", 100)
+    assert len(hits) <= SearchPolicy().evidence_limit
+    memory.close()
+
+
+def test_score_floor_keeps_minimum_evidence() -> None:
+    """分数断层时按最小证据量保留, 可配置为零只留最强证据."""
+    policy = SearchPolicy(min_evidence=4, evidence_limit=12)
+    ranked = [
+        (f"id{index}", score, {"text": f"内容 {index}", "session_id": f"s{index}", "paths": ""})
+        for index, score in enumerate((1.0, 0.9, 0.8, 0.7, 0.1, 0.05, 0.01, 0.0))
+    ]
+    kept = select_evidence(ranked, 100, policy)
+    assert len(kept) == 4
+    assert kept[0][0] == "id0"
+    strict = select_evidence(ranked, 100, SearchPolicy(min_evidence=0, score_floor_ratio=0.85))
+    assert [item[0] for item in strict] == ["id0", "id1"]
+
+
+def test_per_path_limit_avoids_single_file_domination(tmp_path) -> None:
+    """同一路径的切片数量受限, 避免单文件占满证据包."""
+    memory = CodingMemory(tmp_path / "path.db")
+    for index in range(8):
+        memory.add(
+            f"r{index}",
+            "u",
+            f"s{index}",
+            [
+                SourceMessage(
+                    "assistant",
+                    f"src/app.py 第 {index} 段 cache_refresh 逻辑 "
+                    f"def handler_{index}(): return {index}",
+                )
+            ],
+        )
+    hits = memory.search("cache_refresh src/app.py", "u", 100)
+    assert len(hits) <= SearchPolicy().per_path_limit
+    memory.close()
 
 
 def test_estimate_tokens_is_not_raw_utf8_bytes() -> None:

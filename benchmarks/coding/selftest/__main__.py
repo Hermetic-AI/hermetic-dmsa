@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 
 from benchmarks.coding.selftest.cases import NOISE_LEVELS
-from benchmarks.coding.selftest.runner import render_markdown, run_selftest
+from benchmarks.coding.selftest.runner import HISTORY_MODES, render_markdown, run_selftest
 from dmsa.observability.logging import get_logger
 
 
@@ -22,6 +22,20 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--attempts", type=int, default=10)
     parser.add_argument("--out", default="benchmarks/results/coding-selftest.json")
     parser.add_argument(
+        "--history",
+        choices=HISTORY_MODES,
+        default="case",
+        help=(
+            "case: 历史含标准答案; analogy: 历史是同族异标识符的已解任务; none: 无历史对照"
+        ),
+    )
+    parser.add_argument(
+        "--agent-argv",
+        default=None,
+        help="外部 Coding Agent 命令的 JSON 数组; Agent 直接改仓库, 判分只用本地 pytest",
+    )
+    parser.add_argument("--agent-timeout", type=float, default=600.0)
+    parser.add_argument(
         "--fail-on-regression",
         action="store_true",
         help="tuned 的解决率低于 baseline 时返回非零退出码",
@@ -31,11 +45,26 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--seed must be nonnegative")
     if args.attempts < 1:
         parser.error("--attempts must be positive")
+    if args.agent_timeout <= 0:
+        parser.error("agent timeout must be positive")
+    agent_argv = None
+    if args.agent_argv:
+        try:
+            agent_argv = json.loads(args.agent_argv)
+        except json.JSONDecodeError:
+            parser.error("agent argv must be a JSON array of strings")
+        if not isinstance(agent_argv, list) or not all(
+            isinstance(part, str) and part for part in agent_argv
+        ):
+            parser.error("agent argv must be a JSON array of nonempty strings")
     report = run_selftest(
         seed=args.seed,
         arms=tuple(args.arms),
         levels=tuple(args.levels),
         max_attempts=args.attempts,
+        history_mode=args.history,
+        agent_argv=agent_argv,
+        agent_timeout=args.agent_timeout,
     )
     output = Path(args.out)
     output.parent.mkdir(parents=True, exist_ok=True)

@@ -1,4 +1,4 @@
-# ruff: noqa: D415, RUF002
+# ruff: noqa: D415
 """CodingMemory 稳定公开门面。."""
 
 from __future__ import annotations
@@ -98,7 +98,7 @@ class CodingMemory:
         vectors = self.retriever.embed_new([chunk.text for chunk in chunks])
 
         def publish_vectors() -> None:
-            """在 SQLite 幂等键加写锁后发布向量，避免并发冲突覆盖。"""
+            """在提交前发布向量, 避免远端写阻塞数据库事务."""
             if self.vector_index is None or self.retriever.fingerprint is None:
                 return
             ids = [
@@ -116,6 +116,7 @@ class CodingMemory:
                     "vector index write failed; memory was not committed"
                 ) from exc
 
+        publish_vectors()
         with self._operation():
             return self.store.add(
                 request_id,
@@ -125,20 +126,39 @@ class CodingMemory:
                 chunks,
                 vectors,
                 self.retriever.fingerprint,
-                before_publish=publish_vectors,
             )
 
     def search(
         self, query: str, user_id: str, top_k: int, policy: SearchPolicy | None = None
     ) -> list[SearchHit]:
-        """检索 scope 内证据; policy 可用于无副作用配对回放。."""
+        """检索 scope 内证据; policy 可用于无副作用配对回放。
+
+        外部调用 (查询向量化、远端向量检索) 在数据库锁之外执行, 避免慢上游
+        阻塞同进程的其他 Add/Search。
+        """
         require_text(query, "query")
         require_identifier(user_id, "user_id")
         selected = policy or self.policy
         if not isinstance(selected, SearchPolicy):
             raise CodingMemoryValidationError("policy must be SearchPolicy")
         with self._operation():
-            return self.retriever.search(query, user_id, top_k, selected)
+            ranks, features = self.retriever.collect_candidates(query, user_id, selected)
+        vector = self.retriever.query_vector(query)
+        dense_rows: list[sqlite3.Row] = []
+        if vector is not None and selected.dense_weight:
+            if self.retriever.vector_index is not None:
+                ids = self.retriever.dense_index_ids(user_id, vector, selected)
+                with self._operation():
+                    rows = self.store.rows_by_ids(user_id, ids)
+                by_id = {str(row["id"]): row for row in rows}
+                dense_rows = [by_id[point_id] for point_id in ids if point_id in by_id]
+            else:
+                with self._operation():
+                    dense_rows = self.retriever.dense_scan_rows(user_id, vector, selected)
+        with self._operation():
+            return self.retriever.assemble(
+                query, user_id, top_k, selected, ranks, features, dense_rows
+            )
 
     def delete_scope(self, user_id: str) -> None:
         """删除该 scope 的所有来源和索引。."""

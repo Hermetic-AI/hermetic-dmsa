@@ -6,17 +6,19 @@ import hashlib
 import json
 import sqlite3
 import threading
-from collections.abc import Callable, Iterable
+from collections.abc import Iterable
 from pathlib import Path
 
 from dmsa.memory.coding.extraction import Chunk
+from dmsa.memory.coding.ids import chunk_id, message_id
 from dmsa.memory.coding.models import (
     CodingMemoryConflictError,
     CorpusState,
     SourceMessage,
 )
-from dmsa.memory.coding.schema import initialize, scope_token
+from dmsa.memory.coding.schema import initialize
 from dmsa.memory.coding.storage_queries import neighbors, sparse_candidates, substring_candidates
+from dmsa.memory.coding.storage_write import publish_request
 
 
 class CodingStore:
@@ -61,12 +63,12 @@ class CodingStore:
     @staticmethod
     def message_id(user_id: str, request_id: str, ordinal: int) -> str:
         """产生包含 scope 的稳定来源 ID."""
-        return hashlib.sha256("\0".join((user_id, request_id, str(ordinal))).encode()).hexdigest()
+        return message_id(user_id, request_id, ordinal)
 
     @staticmethod
     def chunk_id(message_id: str, start: int, end: int) -> str:
         """产生来源切片稳定 ID."""
-        return hashlib.sha256("\0".join((message_id, str(start), str(end))).encode()).hexdigest()
+        return chunk_id(message_id, start, end)
 
     def add(
         self,
@@ -77,88 +79,22 @@ class CodingStore:
         chunks: Iterable[Chunk],
         vectors: list[tuple[float, ...]],
         fingerprint: str | None,
-        before_publish: Callable[[], None] | None = None,
     ) -> int:
         """事务性发布 request、原文、切片、向量和 revision."""
         digest = self.payload_hash(session_id, messages)
         with self.lock, self.db:
             self.db.execute("BEGIN IMMEDIATE")
-            old = self.existing_request(request_id, user_id, digest)
-            if old is not None:
-                return old
-            if before_publish is not None:
-                before_publish()
-            row = self.db.execute(
-                "SELECT revision FROM corpus WHERE user_id=?", (user_id,)
-            ).fetchone()
-            epoch = self.db.execute(
-                "SELECT epoch FROM scope_epochs WHERE user_id=?", (user_id,)
-            ).fetchone()
-            revision = max(int(row[0]) if row else 0, int(epoch[0]) if epoch else 0) + 1
-            self.db.execute(
-                "INSERT INTO requests VALUES(?,?,?,?,?)",
-                (user_id, request_id, session_id, digest, revision),
+            return publish_request(
+                self.db,
+                user_id,
+                request_id,
+                session_id,
+                digest,
+                messages,
+                chunks,
+                vectors,
+                fingerprint,
             )
-            for ordinal, message in enumerate(messages):
-                mid = self.message_id(user_id, request_id, ordinal)
-                self.db.execute(
-                    "INSERT INTO messages VALUES(?,?,?,?,?,?,?,?)",
-                    (
-                        mid,
-                        user_id,
-                        request_id,
-                        session_id,
-                        ordinal,
-                        message.role,
-                        message.timestamp,
-                        message.content,
-                    ),
-                )
-            for chunk_index, chunk in enumerate(chunks):
-                mid = self.message_id(user_id, request_id, chunk.message_index)
-                cid = self.chunk_id(mid, chunk.start, chunk.end)
-                message = messages[chunk.message_index]
-                self.db.execute(
-                    "INSERT INTO chunks VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                    (
-                        cid,
-                        user_id,
-                        request_id,
-                        session_id,
-                        mid,
-                        chunk_index,
-                        chunk.start,
-                        chunk.end,
-                        message.role,
-                        chunk.outcome,
-                        " ".join(chunk.paths),
-                        " ".join(chunk.symbols),
-                        chunk.text,
-                        scope_token(user_id),
-                    ),
-                )
-                for term in {value.lower() for value in (*chunk.paths, *chunk.symbols)}:
-                    self.db.execute("INSERT INTO exact_terms VALUES(?,?,?)", (user_id, cid, term))
-                if fingerprint is not None:
-                    vector = vectors[chunk_index]
-                    self.db.execute(
-                        "INSERT INTO vectors VALUES(?,?,?,?,?)",
-                        (cid, user_id, fingerprint, len(vector), json.dumps(vector)),
-                    )
-            self.db.execute(
-                "INSERT INTO corpus VALUES(?,?) ON CONFLICT(user_id) "
-                "DO UPDATE SET revision=excluded.revision",
-                (user_id, revision),
-            )
-            self.db.execute(
-                "INSERT INTO scope_epochs VALUES(?,?) ON CONFLICT(user_id) "
-                "DO UPDATE SET epoch=excluded.epoch",
-                (user_id, revision),
-            )
-            self.db.execute(
-                "UPDATE metadata SET value=CAST(value AS INTEGER)+1 WHERE key='corpus_generation'"
-            )
-            return revision
 
     def sparse_candidates(
         self, terms: tuple[str, ...], user_id: str, limit: int

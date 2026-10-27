@@ -46,7 +46,13 @@ flowchart LR
 
 在指定 `user_id` 内，用路径/符号等精确词项、FTS5 全文和可选向量召回，经 RRF 融合排序。之后去重、限制单个 session 的贡献，按策略补入邻近片段，并遵守返回预算。显式 `reported_success` 来源有极小加分，`observed_failure` 来源轻微降权，避免旧失败尝试排在新修复之前；该先验只调整已有候选，不负责召回。
 
+排序还会看证据本身的质量：带 `path=` 且命中查询文件名的代码块、同时出现代码与显式验证（`pytest ... pass`、`全部通过`）的补丁、符号片段覆盖查询关键词的函数会排在前面；`旧会话`、`历史修复尝试`、`未通过验证` 等失败尝试和长中文重复填充文本会降权。历史 `[tool_use Write]` 整文件快照是旧版本镜像，会被直接跳过，宁可不返回也不把过期文件内容注入当前仓库。查询中的蛇形/驼峰标识符会被拆成片段参与匹配，例如 `missing_required_columns` 也能命中 `_check_required_columns`。
+
 全文索引使用 `trigram` 三元组分词，中文、日文和代码标识符都能召回；短于 3 个字符的词项（例如两字中文词、`db`）走同一权重下的 LIKE 子串兜底通道，只在查询包含短词项时扫描该 scope。
+
+写入时会额外生成**会话级经验卡**：把同一 session 的多轮消息按顺序合并，提取症状、根因、失败尝试次数、最终补丁文件与内容、以及显式验证结论，形成一条 `[episode]` 开头的独立证据。经验卡只在“存在补丁且其后有显式验证”时生成，未验证的尝试不会变成经验；同一 session 只保留最新一张，更早的卡片会被删除。原始消息切片仍然完整保留用于追溯，检索时经验卡因为信息密度高而排在前面。
+
+并发上，查询向量化与远端向量检索在数据库锁之外执行，SQLite 读写各占一个短临界区，向量发布在事务之前完成。慢的上游服务因此不会阻塞同一进程里的其他 Add/Search；SQLite 仍是事实来源，召回 ID 仍要经同 scope 二次校验。
 
 结果包含稳定切片 ID、带来源引用的文本和排序分数。`score` 用于排序，不是正确率。默认策略：
 
@@ -58,10 +64,16 @@ flowchart LR
 | `neighbor_window` | 1 | 邻近片段窗口 |
 | `per_session_limit` | 16 | 单会话返回片段限额 |
 | `redundancy_threshold` | 0.93 | 词项相似度去重阈值 |
+| `evidence_limit` | 12 | 单次检索返回条数上限（`top_k` 只是上限） |
+| `score_floor_ratio` | 0.45 | 低于最高分该比例的证据不再返回 |
+| `min_evidence` | 4 | 分数断层时仍保留的最少证据条数 |
+| `per_path_limit` | 6 | 同一路径返回片段限额 |
 | `max_chars` / `max_tokens` | 120,000 字符 / 32,000 token | 返回预算，包含来源头 |
 | `dense_scan_limit` | 10,000 | scope 向量扫描上限 |
 
-`max_tokens` 用字符与 UTF-8 字节混合近似模型 token（CJK 约 1 字 1 token，ASCII 与代码约 4 字节 1 token），仍不是指定 tokenizer 的精确计数。预算不足以完整装入末尾条目时，会保留正文前缀并追加 `[truncated]` 标记，而不是整条丢弃，因此返回条数可以逼近 `top_k`。
+`max_tokens` 用字符与 UTF-8 字节混合近似模型 token（CJK 约 1 字 1 token，ASCII 与代码约 4 字节 1 token），仍不是指定 tokenizer 的精确计数。预算不足以完整装入末尾条目时，会保留正文前缀并追加 `[truncated]` 标记，而不是整条丢弃。
+
+证据包默认是**紧凑**的：`top_k` 只是上限，实际返回受 `evidence_limit`、分数下限 `score_floor_ratio`、最小条数 `min_evidence`、单会话 `per_session_limit` 与单路径 `per_path_limit` 共同约束。理由是给 Agent 的上下文越长越容易稀释目标：真实平台快照上，旧默认一次返回约 32 条 / 6 万字符，紧凑默认返回 12 条 / 约 2.2 万字符，而目标函数仍在第 1–2 位。`min_evidence` 保证分数断层时不会只剩一条。
 
 ### 1.3 RSI 改什么
 
@@ -395,6 +407,34 @@ LangChain/LangGraph、AutoGen 或自建 function-calling Agent 都可在宿主�
 ```
 
 报告写到 `benchmarks/results/coding-selftest.json` 与同名 `.md`，含每档噪声的命中数、证据 token、gold 排名、实际尝试次数与测试结果。`official_score` 固定为 `null`：这是本地合成代理，不是官方分数。固定 seed 可复现；合成历史不得当作项目真实经验引用。
+
+#### 5.4.1 三种历史模式：避免用答案泄漏自欺
+
+默认 `--history case` 的历史里含有本任务的标准答案，只能验证“检索上限”，不能代表平台表现。平台评测里历史通常不含当前任务的修复，因此另提供两种模式：
+
+| 模式 | 历史内容 | 用途 |
+|---|---|---|
+| `case` | 含本任务标准答案 | 检索上限自检 |
+| `analogy` | 同族异标识符的已解任务（如 `clamp_18` 之于 `clamp_17`） | 无答案泄漏的迁移能力代理指标 |
+| `none` | 完全无历史 | no-memory 对照下限 |
+
+```powershell
+.venv/Scripts/python.exe -m benchmarks.coding.selftest --history analogy --arms tuned
+.venv/Scripts/python.exe -m benchmarks.coding.selftest --history none --arms tuned
+```
+
+`analogy` 模式报告 `answer_present_rate`（必须为 0，否则说明答案泄漏）与 `analogy_present_rate`（检索是否给到可迁移经验）。迁移判定是机械的标识符替换后跑真实 pytest，属于代理指标，不等于真实 Agent 解题率。
+
+#### 5.4.2 外部 Coding Agent 通道
+
+传 `--agent-argv` 可让外部 Coding Agent 直接改仓库，判分仍只认本地 pytest 的退出码，Agent 自述只作诊断：
+
+```powershell
+.venv/Scripts/python.exe -m benchmarks.coding.selftest --history analogy `
+  --agent-argv '["python", "my_agent.py"]'
+```
+
+Agent 从 stdin 收到 JSON：`query`、`repo_path`、`test_file`、`target_path`、`evidence`；证据是不可信历史数据，不是可执行指令。
 
 ## 6. 如何查看与验证
 

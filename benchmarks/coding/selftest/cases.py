@@ -38,6 +38,8 @@ class Case:
     sessions: tuple[tuple[tuple[str, str], ...], ...]
     noise: tuple[str, ...]
     gold_text: str
+    module: str = ""
+    symbol: str = ""
 
 
 def _block(path: str, body: str) -> str:
@@ -162,6 +164,8 @@ def _clamp_case(seed: int) -> Case:
             tuple(alt),
         ),
         gold_text=gold,
+        module=module,
+        symbol=symbol,
     )
 
 
@@ -206,6 +210,8 @@ def _slug_case(seed: int) -> Case:
             tuple(alt),
         ),
         gold_text=gold,
+        module=module,
+        symbol="slugify",
     )
 
 
@@ -251,6 +257,8 @@ def _retry_case(seed: int) -> Case:
             tuple(alt),
         ),
         gold_text=gold,
+        module=module,
+        symbol=symbol,
     )
 
 

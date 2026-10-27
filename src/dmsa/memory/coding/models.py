@@ -74,11 +74,15 @@ class SearchPolicy:
     redundancy_threshold: float = 0.93
     dense_scan_limit: int = 10000
     max_tokens: int = 32000
+    evidence_limit: int = 12
+    score_floor_ratio: float = 0.45
+    per_path_limit: int = 6
+    min_evidence: int = 4
 
     def __post_init__(self) -> None:
         """拒绝非有限权重、布尔整数和无界策略值."""
         weights = (self.exact_weight, self.sparse_weight, self.dense_weight, self.experience_weight)
-        for value in (*weights, self.redundancy_threshold):
+        for value in (*weights, self.redundancy_threshold, self.score_floor_ratio):
             if isinstance(value, bool) or not isinstance(value, (float, int)):
                 raise CodingMemoryValidationError("policy weights must be finite numbers")
             if not math.isfinite(value):
@@ -87,6 +91,8 @@ class SearchPolicy:
             raise CodingMemoryValidationError("channel weights must be in [0, 10] and not all zero")
         if not 0 <= self.experience_weight <= 10:
             raise CodingMemoryValidationError("experience_weight must be in [0, 10]")
+        if not 0 <= self.score_floor_ratio <= 1:
+            raise CodingMemoryValidationError("score_floor_ratio must be in [0, 1]")
         bounds = (
             (self.candidate_limit, 1, 1000),
             (self.neighbor_window, 0, 10),
@@ -94,6 +100,9 @@ class SearchPolicy:
             (self.per_session_limit, 1, 1000),
             (self.dense_scan_limit, 1, 100000),
             (self.max_tokens, 1, 1000000),
+            (self.evidence_limit, 1, 1000),
+            (self.per_path_limit, 1, 1000),
+            (self.min_evidence, 0, 1000),
         )
         for value, lower, upper in bounds:
             if type(value) is not int or not lower <= value <= upper:

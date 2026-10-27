@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import math
-import re
 import sqlite3
 from collections import defaultdict
+from collections.abc import Mapping
 
 from dmsa.memory.coding.budget import estimate_tokens
+from dmsa.memory.coding.episodes import SUPERSEDED_OUTCOME
 from dmsa.memory.coding.experiences import applicability_adjustment, extract_experience_card
 from dmsa.memory.coding.extraction import Chunk
 from dmsa.memory.coding.models import (
@@ -18,6 +19,14 @@ from dmsa.memory.coding.models import (
     SearchHit,
     SearchPolicy,
 )
+from dmsa.memory.coding.packing import select_evidence
+from dmsa.memory.coding.packing import token_set as _tokens
+from dmsa.memory.coding.ranking import (
+    QueryFeatures,
+    evidence_adjustment,
+    is_stale_write,
+    query_features,
+)
 from dmsa.memory.coding.storage import CodingStore
 from dmsa.memory.coding.tokenize import query_terms
 from dmsa.memory.coding.vector_index import VectorIndex
@@ -27,11 +36,6 @@ def _cosine(left: tuple[float, ...], right: tuple[float, ...]) -> float:
     """计算余弦相似度."""
     dot = sum(a * b for a, b in zip(left, right, strict=True))
     return dot / (math.sqrt(sum(a * a for a in left)) * math.sqrt(sum(b * b for b in right)))
-
-
-def _tokens(text: str) -> set[str]:
-    """产生预算统计及冗余比较用 token."""
-    return set(re.findall(r"[\w./-]+", text.lower()))
 
 
 # 显式结果标签只做小幅排序先验: 声称成功的来源优先, 已观测失败的来源降权。
@@ -102,7 +106,8 @@ class CodingRetriever:
         if weight == 0:
             return
         for rank, row in enumerate(rows, 1):
-            ranks[str(row["id"])] += weight / (60 + rank)
+            key = str(row["id"])
+            ranks[key] = ranks.get(key, 0.0) + weight / (60 + rank)
 
     def _fit(
         self, source: str, body: str, char_budget: int, token_budget: int
@@ -133,7 +138,7 @@ class CodingRetriever:
         top_k: int,
         policy: SearchPolicy,
     ) -> list[SearchHit]:
-        """扩展邻居后按冗余、session 与字符/token 预算装包."""
+        """扩展邻居后按限额、冗余与预算装包."""
         expanded = list(ordered)
         seen = set(expanded)
         for cid in ordered:
@@ -146,28 +151,27 @@ class CodingRetriever:
         rows = self.store.rows_by_ids(user_id, tuple(expanded))
         by_id = {str(row["id"]): row for row in rows}
         expanded.sort(key=lambda cid: (-ranks[cid], cid))
-        selected: list[SearchHit] = []
-        sessions: dict[str, int] = defaultdict(int)
-        char_budget, token_budget = policy.max_chars, policy.max_tokens
-        token_sets: list[set[str]] = []
+        ranked: list[tuple[str, float, Mapping[str, object]]] = []
         for cid in expanded:
             row = by_id.get(cid)
             if row is None:
                 continue
-            session = str(row["session_id"])
-            if sessions[session] >= policy.per_session_limit:
-                continue
-            source = (
-                f"[request={row['request_id']} session={session} message={row['message_id']} "
-                f"chars={row['start']}:{row['end']} role={row['role']} outcome={row['outcome']}]\n"
-            )
             body = str(row["text"])
-            terms = _tokens(body)
-            if token_sets and any(
-                len(terms & existing) / max(1, len(terms | existing)) >= policy.redundancy_threshold
-                for existing in token_sets
-            ):
+            if policy.experience_weight and is_stale_write(body):
                 continue
+            if str(row["outcome"]) == SUPERSEDED_OUTCOME:
+                continue
+            ranked.append((cid, ranks[cid], dict(row)))
+        selected = select_evidence(ranked, top_k, policy)
+        hits: list[SearchHit] = []
+        char_budget, token_budget = policy.max_chars, policy.max_tokens
+        for cid, score, item in selected:
+            source = (
+                f"[request={item['request_id']} session={item['session_id']} "
+                f"message={item['message_id']} chars={item['start']}:{item['end']} "
+                f"role={item['role']} outcome={item['outcome']}]\n"
+            )
+            body = str(item["text"])
             content = source + body
             size = estimate_tokens(content)
             if len(content) > char_budget or size > token_budget:
@@ -175,19 +179,17 @@ class CodingRetriever:
                 if truncated is None:
                     continue
                 content, size = truncated, estimate_tokens(truncated)
-            selected.append(SearchHit(cid, content, ranks[cid]))
-            token_sets.append(terms)
-            sessions[session] += 1
+            hits.append(SearchHit(cid, content, score))
             char_budget -= len(content)
             token_budget -= size
-            if len(selected) >= top_k or char_budget <= 0 or token_budget <= 0:
+            if char_budget <= 0 or token_budget <= 0:
                 break
-        return selected
+        return hits
 
-    def search(self, query: str, user_id: str, top_k: int, policy: SearchPolicy) -> list[SearchHit]:
-        """融合 scope 内候选并返回可追溯证据."""
-        if type(top_k) is not int or top_k < 1:
-            raise CodingMemoryValidationError("top_k must be a positive integer")
+    def collect_candidates(
+        self, query: str, user_id: str, policy: SearchPolicy
+    ) -> tuple[dict[str, float], QueryFeatures]:
+        """只做库内召回, 返回通道分数与查询特征; 不含任何外部调用."""
         terms = tuple(_tokens(query))
         expanded = query_terms(query)
         ranks: dict[str, float] = defaultdict(float)
@@ -197,47 +199,73 @@ class CodingRetriever:
         self._add_channel(ranks, policy.exact_weight, exact)
         self._add_channel(ranks, policy.sparse_weight, sparse)
         self._add_channel(ranks, policy.sparse_weight, short)
-        if self.embedder is not None and policy.dense_weight:
-            query_embedder = getattr(self.embedder, "embed_query", None)
-            query_vector = (
-                tuple(float(value) for value in query_embedder(query))
-                if callable(query_embedder)
-                else self.embed_new([query])[0]
+        return dict(ranks), query_features(query)
+
+    def query_vector(self, query: str) -> tuple[float, ...] | None:
+        """计算查询向量; 属于外部调用, 必须在数据库锁之外执行."""
+        if self.embedder is None:
+            return None
+        query_embedder = getattr(self.embedder, "embed_query", None)
+        vector = (
+            tuple(float(value) for value in query_embedder(query))
+            if callable(query_embedder)
+            else self.embed_new([query])[0]
+        )
+        if (
+            len(vector) != self.embedder.dimension
+            or not all(math.isfinite(value) for value in vector)
+            or not any(vector)
+        ):
+            raise CodingMemoryValidationError("embedder returned invalid query vector")
+        return vector
+
+    def dense_index_ids(
+        self, user_id: str, vector: tuple[float, ...], policy: SearchPolicy
+    ) -> tuple[str, ...]:
+        """在远端向量索引里按 scope 过滤检索; 属于外部调用."""
+        if self.vector_index is None:
+            return ()
+        try:
+            return tuple(
+                self.vector_index.search(
+                    user_id, self.fingerprint or "", vector, policy.candidate_limit
+                )
             )
-            if (
-                len(query_vector) != self.embedder.dimension
-                or not all(math.isfinite(value) for value in query_vector)
-                or not any(query_vector)
-            ):
-                raise CodingMemoryValidationError("embedder returned invalid query vector")
-            if self.vector_index is not None:
-                try:
-                    candidate_ids = self.vector_index.search(
-                        user_id, self.fingerprint or "", query_vector, policy.candidate_limit
-                    )
-                except Exception as exc:
-                    raise CodingMemoryError("vector index search failed") from exc
-                indexed_rows = self.store.rows_by_ids(user_id, tuple(candidate_ids))
-                by_id = {str(row["id"]): row for row in indexed_rows}
-                dense_rows = [by_id[point_id] for point_id in candidate_ids if point_id in by_id]
-                self._add_channel(ranks, policy.dense_weight, dense_rows)
-            else:
-                count, dense_candidates = self.store.dense_candidates(
-                    user_id, self.fingerprint or "", policy.dense_scan_limit
-                )
-                if count > policy.dense_scan_limit:
-                    raise DenseScopeTooLargeError(
-                        f"dense scan has {count} chunks; limit is {policy.dense_scan_limit}"
-                    )
-                if any(len(vector) != len(query_vector) for _, vector in dense_candidates):
-                    raise CodingMemoryValidationError(
-                        "stored vector dimension differs from embedder"
-                    )
-                scored = [(_cosine(query_vector, vector), row) for row, vector in dense_candidates]
-                scored.sort(key=lambda item: (-item[0], str(item[1]["id"])))
-                self._add_channel(
-                    ranks, policy.dense_weight, [row for _, row in scored[: policy.candidate_limit]]
-                )
+        except Exception as exc:
+            raise CodingMemoryError("vector index search failed") from exc
+
+    def dense_scan_rows(
+        self, user_id: str, vector: tuple[float, ...], policy: SearchPolicy
+    ) -> list[sqlite3.Row]:
+        """在库内做有界稠密扫描; 只做库内读取."""
+        count, dense_candidates = self.store.dense_candidates(
+            user_id, self.fingerprint or "", policy.dense_scan_limit
+        )
+        if count > policy.dense_scan_limit:
+            raise DenseScopeTooLargeError(
+                f"dense scan has {count} chunks; limit is {policy.dense_scan_limit}"
+            )
+        if any(len(stored) != len(vector) for _, stored in dense_candidates):
+            raise CodingMemoryValidationError("stored vector dimension differs from embedder")
+        scored = [(_cosine(vector, stored), row) for row, stored in dense_candidates]
+        scored.sort(key=lambda item: (-item[0], str(item[1]["id"])))
+        return [row for _, row in scored[: policy.candidate_limit]]
+
+    def assemble(
+        self,
+        query: str,
+        user_id: str,
+        top_k: int,
+        policy: SearchPolicy,
+        ranks: dict[str, float],
+        features: QueryFeatures,
+        dense_rows: list[sqlite3.Row],
+    ) -> list[SearchHit]:
+        """融合稠密通道、打经验分并装包; 只做库内读取."""
+        if type(top_k) is not int or top_k < 1:
+            raise CodingMemoryValidationError("top_k must be a positive integer")
+        if dense_rows:
+            self._add_channel(ranks, policy.dense_weight, dense_rows)
         card_rows = self.store.rows_by_ids(user_id, tuple(ranks))
         for row in card_rows:
             text = str(row["text"])
@@ -252,11 +280,15 @@ class CodingRetriever:
                     str(row["outcome"]),
                 )
             )
-            ranks[str(row["id"])] += policy.experience_weight * applicability_adjustment(
-                query, card
+            key = str(row["id"])
+            ranks[key] = ranks.get(key, 0.0) + policy.experience_weight * (
+                applicability_adjustment(query, card)
             )
-            ranks[str(row["id"])] += (
-                policy.experience_weight * _OUTCOME_BONUS.get(str(row["outcome"]), 0.0)
+            ranks[key] = ranks.get(key, 0.0) + policy.experience_weight * (
+                _OUTCOME_BONUS.get(str(row["outcome"]), 0.0)
+            )
+            ranks[key] = ranks.get(key, 0.0) + policy.experience_weight * evidence_adjustment(
+                features, text, str(row["paths"]), str(row["symbols"])
             )
         ordered = sorted(ranks, key=lambda key: (-ranks[key], key))
         return self._pack(user_id, ordered, ranks, top_k, policy)
