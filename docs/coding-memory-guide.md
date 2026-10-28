@@ -442,14 +442,33 @@ Agent 从 stdin 收到 JSON：`query`、`repo_path`、`test_file`、`target_path
 
 生产部署（百度云 `106.12.139.107`，`/home/jensen/hermetic-dmsa`，compose 叠加 `compose.yaml` + `deploy/compose.competition.yaml` + `deploy/compose.offline.yaml`）的自测入口如下。密钥在服务器 `.env` 的 `DMSA_MEMORY_API_KEY`，不要写进仓库或日志。
 
-| 用途 | 入口 | 认证 |
-|---|---|---|
-| 健康检查 | `GET https://jensenlyz.cn/health` | 免认证，返回 `{"ok":true}` |
-| 写入记忆 | `POST https://jensenlyz.cn/v1/memories/add` | `Authorization: Bearer <key>` |
-| 检索记忆 | `POST https://jensenlyz.cn/v1/memories/search` | `Authorization: Bearer <key>` |
-| 容器内自检 | `docker compose ... exec -T memory dmsa-memory-smoke` | 容器内已带密钥 |
-| 只读记忆浏览器 | `ssh -L 18765:127.0.0.1:18765 root@106.12.139.107` 后开 `http://127.0.0.1:18765` | 仅内网 |
-| Qdrant 集合 | 容器内 `http://qdrant:6333/collections` | 仅内网，无端口映射 |
+nginx 用 `location /v1/memories/ { proxy_pass http://127.0.0.1:18000/; }` 剥掉前缀后转发，
+所以 `/v1/memories` 之后的任意子路径都直接映射到记忆服务的同名路由。
+
+| 用途 | 入口 | 认证 | 说明 |
+|---|---|---|---|
+| 健康检查 | `GET https://jensenlyz.cn/health` | 免认证 | 返回 `{"ok":true}` |
+| 写入记忆 | `POST https://jensenlyz.cn/v1/memories/add` | `Authorization: Bearer <key>` | 幂等写入；同一 `request_id` 换内容返回 409 |
+| 检索记忆 | `POST https://jensenlyz.cn/v1/memories/search` | `Authorization: Bearer <key>` | 返回 `trace_id` 与 `data[]`（`id` / `content` / `score`） |
+| 检索反馈 | `POST https://jensenlyz.cn/v1/memories/feedback` | `Authorization: Bearer <key>` | 保存 trace 反馈，新反馈触发一次有界进化；重复反馈返回 `duplicate_feedback` |
+| 任务结果上报 | `POST https://jensenlyz.cn/v1/memories/task_result` | `Authorization: Bearer <key>` | 只记录事实，返回 `attribution` 因果归因结果，不触发进化 |
+| 提案 | `POST https://jensenlyz.cn/v1/memories/rsi/propose` | `Authorization: Bearer <key>` | 重试当前 scope 的策略提案 |
+| 进化 | `POST https://jensenlyz.cn/v1/memories/rsi/evolve` | `Authorization: Bearer <key>` | 提案 + 回放 + 门禁激活，返回 `status` 与 `version` |
+| 回滚 | `POST https://jensenlyz.cn/v1/memories/rsi/rollback` | `Authorization: Bearer <key>` | 恢复该 scope 已记录的策略版本 |
+| 容器内自检 | `docker compose ... exec -T memory dmsa-memory-smoke` | 容器内已带密钥 | 校验 `/health`、`/add`、`/search` |
+| 只读记忆浏览器 | `ssh -L 18765:127.0.0.1:18765 root@106.12.139.107` 后开 `http://127.0.0.1:18765` | 仅内网 | `/feedback`、`/rsi/*` 也在此端口 |
+| Qdrant 集合 | 容器内 `http://qdrant:6333/collections` | 仅内网，无端口映射 | `DMSA_VECTOR_URL=http://qdrant:6333` 决定向量后端 |
+
+一键跑完上面 7 个带认证接口加 2 个负向用例（无认证 401、非法请求体 422）：
+
+```bash
+export DMSA_MEMORY_API_KEY=...   # 从服务器 .env 取, 不要提交
+.venv/Scripts/python.exe examples/06_remote_self_test.py
+```
+
+脚本输出 JSON 报告（每个接口的状态码与耗时、`search_hit_count`、`passed`），
+退出码 0 表示全部通过。`DMSA_SELF_TEST_ORIGIN` 与 `DMSA_SELF_TEST_PREFIX`
+可覆盖默认的 `https://jensenlyz.cn` 与 `/v1/memories`。
 
 ```bash
 # 写入一段会话历史（同一 session 的多轮请求会合并成一条经验卡）
@@ -465,7 +484,11 @@ curl -sS https://jensenlyz.cn/v1/memories/search \
   -d '{"query":"ops_0_clamp.py clamp_0 负数 返回错误","user_id":"demo-scope","top_k":10}'
 ```
 
-MCP 记忆接口（stdio 桥接同一公网服务）：`python -m dmsa.mcp_server.coding_memory`，环境变量 `DMSA_CODING_MEMORY_URL=https://jensenlyz.cn/v1/memories`、`DMSA_MEMORY_API_KEY`、`DMSA_CODING_MEMORY_SCOPE`；工具为 `dmsa_coding_memory_status` / `_record` / `_search` / `_feedback`。远程模式下的 `_search` 会返回 `trace_id`，配合 `_feedback` 可把检索与结果关联起来。
+MCP 记忆接口（stdio 桥接同一公网服务）：`python -m dmsa.mcp_server.coding_memory`，环境变量 `DMSA_CODING_MEMORY_URL=https://jensenlyz.cn/v1/memories`、`DMSA_MEMORY_API_KEY`、`DMSA_CODING_MEMORY_SCOPE`；远程模式下的 `_search` 会返回 `trace_id`，配合 `_feedback` 可把检索与结果关联起来。
+
+stdio 暴露 14 个工具：`status`、`record`、`search`、`feedback`、`task_result`、`governance`、`procedure`、`effectiveness`、`conflicts`、`hybrid_search`、`recall`、`consolidate`、`transfer`、`search_as_of`（前缀均为 `dmsa_coding_memory_`）。
+
+远程模式（设了 `DMSA_CODING_MEMORY_URL`）只把 `status`、`record`、`search`、`feedback`、`task_result` 转发到 HTTP 后端；其余 9 个工具在远程模式下调用会返回 `unknown tool`，它们依赖本地 SQLite，只能在本地模式（不设 `DMSA_CODING_MEMORY_URL`）使用。
 
 ### 6.1 检查检索证据
 
