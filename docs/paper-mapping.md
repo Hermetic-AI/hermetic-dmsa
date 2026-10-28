@@ -29,14 +29,34 @@
 Coding Memory 的 `dmsa.memory.coding.experiences` 是面向开源工程记忆赛道的研究原型，
 不属于上述论文已验证的 DAG/SGA 创新点。它从切片原文形成保守的 facet 视图并作轻量检索先验；
 其效果须由代理噪声基准和真实 Coding Agent 配对任务测量，不应作为论文结果引用。
+同层的 `coding.code_anchors` / `coding.anchor_store` / `coding.snapshot`（代码锚点抽取、
+锚点召回通道、工程关系边、仓库符号快照与失效标注）与 `coding.skeleton` / `coding.evidence_pack`
+（代码骨架段、邻居与关系扩展、预算裁剪）是面向编码赛道的工程增强：它们只把原文里已有的
+结构事实显式化，不构成论文已验证的创新点，也不声称 coding 成功率提升。
+`coding.ids.scope_key` 的仓库维度分区（`user#repo`）同样是工程隔离手段，用于让不同仓库的
+证据、语料指纹与回放样本互不干扰，不对应论文创新点。
 同层的 `coding.tokenize` 与 `coding.storage_queries` 稀疏通道（trigram 分词 + 标识符片段拆分 + 短词 LIKE 兜底）
 是可检索性工程修正，同样不对应论文创新点，只影响召回通道的实现细节。
 `coding.ranking` 的证据质量先验（目标路径补丁、已验证代码、失败尝试与过期写入降权）也是工程排序
 修正，不声称论文实验结果或 coding 成功率；其效果只能由代理噪声基准和真实 Coding Agent 配对任务测量。
 
+同层新增的一组工程能力——写入门控与遗忘淘汰（`coding.admission` / `coding.governance` /
+`coding.trust` / `coding.trust_store`）、条目级因果归因与端到端有效性度量
+（`gradient.attribution` / `gradient.effectiveness`）、程序性记忆（`coding.procedures` /
+`coding.procedure_store` / `coding.procedure_service`）、团队作用域与写冲突仲裁
+（`coding.teams` / `coding.team_service`）、多跳迭代检索与召回解释
+（`coding.multihop` / `coding.recall_service` / `coding.explanation`）、记忆合并与跨仓库迁移
+（`coding.generalize` / `coding.consolidation_*`）、稠密混合检索与有界重排
+（`coding.hybrid` / `coding.hybrid_service`）以及时序 as-of 查询
+（`coding.temporal` / `coding.temporal_service` / `coding.search_flow`）——同样全部是面向
+编码赛道的工程增强，不构成论文已验证的创新点，也不声称 coding 成功率提升：
+它们只把已有轨迹里的显式事实（写入内容、召回结果、反馈、任务结果）组织成可核算的
+治理与检索能力，实现口径与可测边界见
+[Coding Memory 扩展能力](algorithms/coding-memory-extensions.md)。
+
 ### L2 梯度聚合（论文 §5 SGA）
 
-| `src/dmsa/gradient/policy.py`, `replay.py`, `model_advisor.py` | 离线检索候选与配对门禁；可选模型仅做候选选择/解释，属于工程评测闭环，不声称论文实验结果或 coding 成功率 |
+| `src/dmsa/gradient/policy.py`, `replay.py`, `replay_models.py`, `model_advisor.py`, `replay_gate.py`, `task_results.py`, `task_gate.py`, `diagnosis.py`, `meta_evolution.py` | 离线检索候选与多目标配对门禁（召回、排序质量与上下文开销）、切片感知诊断聚合、任务级门禁（成功任务不得丢失已确认证据）、任务结果记录，以及在等回放预算下比较确定性/模型提案器且只写审计事件的外层循环；可选模型仅做候选选择/解释，属于工程评测闭环，不声称论文实验结果或 coding 成功率 |
 
 | 文件 | 对应论文 |
 |---|---|

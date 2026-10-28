@@ -61,7 +61,7 @@ flowchart LR
 | 三通道权重 | 各 1.0 | 无 embedder 时不运行 dense |
 | `experience_weight` | 1.0 | 可追溯经验卡适用性排序先验；0 可作为关闭该先验的对照 |
 | `candidate_limit` | 240 | 各通道候选上限 |
-| `neighbor_window` | 1 | 邻近片段窗口 |
+| `neighbor_window` | 1 | 邻近片段窗口；扩展证据的分数被压到父命中之下 |
 | `per_session_limit` | 16 | 单会话返回片段限额 |
 | `redundancy_threshold` | 0.93 | 词项相似度去重阈值 |
 | `evidence_limit` | 12 | 单次检索返回条数上限（`top_k` 只是上限） |
@@ -608,3 +608,71 @@ python examples/01_quickstart_mcp.py
 | RSI 示例后服务排序没变 | 示例使用临时库，CLI 不自动读取策略注册表 |
 
 本地接入完成标准：Add 成功、Search 来源正确、跨 scope 不返回记录、重启可检索、另一个 Agent 真正调用 Search 并运行实际测试。比赛提交还需要官方合同联调和正式评估，这两项尚未完成。
+
+## 9. 本地闭环工具：检索 → 反馈 → 任务结果
+
+本地 stdio MCP（`dmsa-coding-memory-mcp`）现在与 HTTP 路径共享同一套活动策略：
+
+| 工具 | 用途 |
+|---|---|
+| `dmsa_coding_memory_search` | 返回 `trace_id` 与证据；证据头带 `[anchors]` 结构化定位信息与 `[skeleton]` 代码骨架 |
+| `dmsa_coding_memory_record` | 写入本轮验证过的根因、改动与测试结论；与 search 一样接受可选 `repo`，返回写入门控的判定 |
+| `dmsa_coding_memory_feedback` | 把 `trace_id` 与 success/failure、失败类型、确认有用的证据 ID 绑定，触发一次受门禁保护的策略进化 |
+| `dmsa_coding_memory_task_result` | 上报真实任务结果（测试通过数、改动文件、token、耗时），与检索反馈分开存放 |
+| `dmsa_coding_memory_status` | 确认连接、scope 与当前活动策略 |
+| `dmsa_coding_memory_governance` | 查看条目的信任度与观测计数，或淘汰长期未使用的低信任条目 |
+| `dmsa_coding_memory_procedure` | 沉淀或匹配程序性记忆；没有显式步骤时不落盘并如实回报 |
+| `dmsa_coding_memory_effectiveness` | 度量记忆的实际有效性；样本不足时如实留空 |
+| `dmsa_coding_memory_conflicts` | 列出待仲裁的跨作者写冲突，或按结论关闭其中一条 |
+| `dmsa_coding_memory_recall` | 带召回解释的检索：命中通道、命中词项与迭代轮次，可做多跳扩展 |
+| `dmsa_coding_memory_consolidate` | 把重复出现的经验合并成一条通用规则，返回合并报告 |
+| `dmsa_coding_memory_transfer` | 把可复用的通用规则迁移到另一个仓库，返回迁移报告 |
+| `dmsa_coding_memory_hybrid_search` | 稠密混合检索：通道融合 + 有界重排，返回通道贡献与重排增量 |
+| `dmsa_coding_memory_search_as_of` | 时序回看检索：按写入序号或写入时刻复现当时的记忆内容 |
+
+后 8 个工具目前只在 stdio MCP 暴露；HTTP 路径仍然只有 `/add`、`/search`、`/feedback`、
+`/task_result`、`/rsi/evolve`、`/rsi/rollback` 与 `/health`，不包含它们。
+
+新增能力的日常用法：
+
+- `record` 现在会做写入门控：内容与既有条目近乎重复时直接拒绝并说明原因，同义内容不必
+  反复写入；跨作者的近似重复会保留下来并登记成待仲裁的冲突。
+- `search` 返回过的条目会记一次曝光，`feedback` 与 `task_result` 会把确认、反驳、验证
+  写回条目信任度。`governance` 可以查看这些计数，并在必要时淘汰长期未使用的低信任条目。
+- `recall` 是 `search` 的可解释版本：除了证据，还给出每条证据是被哪些通道、哪些词项召回
+  的，以及多跳扩展时补了哪些词。排查「为什么这条记忆被捞出来」时用它。
+- `procedure` 沉淀「下次该按什么顺序做」的流程，只认正文里显式写出的步骤。
+- `consolidate` 与 `transfer` 分别做同仓合并与跨仓迁移；含具体路径与符号的规则不会被迁移，
+  拒绝原因与泄漏项写在报告里。
+- `hybrid_search` 在有嵌入器时把稠密信号按相似度而不是名次参与融合，再做一次有界重排。
+- `search_as_of` 复现「当时记忆库里的内容」，用于回看某次改动之前的证据状态。
+
+这些能力都是确定性工程增强，不调用模型、不把自述升级为事实，也不声称提升编码任务成功率；
+各自的实现口径与可测边界见 [Coding Memory 扩展能力](algorithms/coding-memory-extensions.md)。
+
+`search` 与 `record` 都接受可选 `repo`：传入后实际分区键是 `scope_key(user_id, repo)`，即
+`user#repo`，不同仓库的证据、向量、语料指纹与回放样本互不干扰；不传时行为与旧版一致。
+`repo` 与 `user_id` 中都不允许出现分隔符 `#`。工具清单与参数校验集中在
+`dmsa/mcp_server/coding_tools.py`，stdio 与远端两套服务共用同一份定义，避免两处漂移。
+
+失败类型可选 `coarse_chunk`、`exact_miss`、`identifier_confusion`、`missing_context`、
+`missing_relation`、`missing_structure`、`redundancy`、`stale_evidence`、`unknown`。诊断是
+切片感知的：同类失败至少要出现两次且分布在两个不同切片才会产生候选，成功反例多于失败时
+不再提案，因此单个噪声会话改不动策略。`identifier_confusion` 会提高代码锚点通道权重，
+`stale_evidence` 会降低经验卡先验，`missing_relation` 会打开关系扩展窗口，
+`coarse_chunk` 会调整切片粒度。不确定原因时用 `unknown`，它只计入反馈不生成提案。
+
+策略候选必须通过 `offline-rsi-gate-v2`：逐例召回与 NDCG 都不许退化，没有召回收益的样本不许
+变贵，并且至少有一例在召回或排序上严格改善。通过检索门禁后还要过任务级门禁
+（`dmsa.gradient.task_gate`）：已经成功的任务，当时被确认真正有用的证据在候选策略下不许丢失，
+丢一条即拒绝并写 `task_gate_rejected` 事件；没有任务样本时该门禁空过，事件里如实记录
+`checked=0`。门禁只看检索代理指标，不能证明编码成功率提升；
+真正的任务收益仍需按第 5 章的配对实验测量。
+
+`dmsa.gradient.meta_evolution.compare_proposers(rsi, scope, budget_replays=6)` 可以在等回放
+预算下比较"确定性提案"与"模型辅助提案"两臂的真实表现，只写一条 `meta_evolution` 审计事件、
+不激活任何策略，用于人工决定是否打开 `models` 开关。
+
+代码锚点来自轨迹原文里的 diff 头、代码块 `path=`、类/函数定义、测试 id 与堆栈帧。若工作区
+可用，可调用 `CodingMemory.save_repo_snapshot(user_id, root, repo=...)` 生成符号快照，检索时会把路径
+已消失或符号已改名的历史证据标注 `[stale]`。快照必须存到与检索相同的 `repo` 分区才会生效。

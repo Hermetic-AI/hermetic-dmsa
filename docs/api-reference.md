@@ -66,7 +66,8 @@ scope coding evidence API。`CodingMemory(path, embedder=None, policy=None, vect
 路径；`add(request_id, user_id, session_id, messages)` 幂等保存有序 `SourceMessage`
 并返回 scope revision；冲突抛出 `CodingMemoryConflictError`。`search(query, user_id,
 top_k, policy=None)` 返回含稳定切片 ID、来源引用文本和 RRF 分数的 `SearchHit`。临时
-policy 可用于配对检索，不会修改实例默认策略。`delete_scope(user_id)` 删除 scope 数据，
+policy 可用于配对检索，不会修改实例默认策略。`delete_scope(user_id, repo="")` 删除 scope 数据，
+不带 `repo` 时连同该用户的全部仓库子域一起清理，带 `repo` 时只清理该分区；
 `corpus_state(user_ids)` 返回同一事务读取的 `CorpusState(revision, fingerprint)`，
 `corpus_fingerprint(user_ids)` 为其指纹快捷方式，`close()` 关闭连接。
 校验错误抛出 `CodingMemoryValidationError`。可选 embedder 要求 fingerprint/name、dimension
@@ -76,6 +77,10 @@ policy 可用于配对检索，不会修改实例默认策略。`delete_scope(us
 scope/fingerprint 过滤召回向量候选；`QdrantVectorIndex(url, timeout=5, api_key=None)` 需
 安装 `hermetic-dmsa[vector]`。Qdrant 候选经 SQLite 再次验证 scope。细节与适用边界见
 `docs/algorithms/coding-memory.md`。
+`add(...)`、`search(...)`、`delete_scope(...)` 与 `save_repo_snapshot(...)` 都接受可选的
+`repo` 关键字参数；`dmsa.memory.scope_key(user_id, repo)` 返回实际分区键（`repo` 为空时即
+`user_id`，否则为 `user#repo`）。分隔符 `#` 不允许出现在 `user_id` 或 `repo` 中，否则
+`scope_key` 抛 `CodingMemoryValidationError`，因为复合键必须能反向归属才能按用户完整清理。
 `max_chars` 按 Python 字符长度计量，`max_tokens` 使用公开的
 `dmsa.memory.estimate_tokens` 确定性 UTF-8 字节预算代理，并非模型 tokenizer。SQLite 使用带 scope
 约束的索引与 FTS 结构；FTS 虚表按 `trigram` 三元组分词，所以中英混排查询可召回，短于 3 个
@@ -83,20 +88,180 @@ scope/fingerprint 过滤召回向量候选；`QdrantVectorIndex(url, timeout=5, 
 schema migration，旧数据库可直接打开，分词器为 `unicode61` 的历史库会被自动重建索引。
 `SearchPolicy.experience_weight`（默认 `1.0`，范围 `[0, 10]`）调节可追溯经验卡的轻量
 适用性先验；设为 `0` 可在配对回放中禁用该 rerank，而不改变来源记录或召回通道。
+`SearchPolicy.anchor_weight`（默认 `0.6`，范围 `[0, 10]`）控制代码锚点召回通道的 RRF 权重：
+锚点来自轨迹原文里的 diff 头、代码块 `path=`、类/函数定义、测试 id 与堆栈帧，写入
+`code_anchors` 表并按 scope 索引；设为 `0` 可在配对回放中关闭该通道。命中证据的来源头之后
+会追加一行 `[anchors] path::symbol; ...`。
+`CodingMemory.save_repo_snapshot(user_id, root, repo="")` 用标准库 `ast` 扫描工作区 Python 文件，保存
+仓库相对路径、文件指纹与限定符号；检索时把路径已消失或符号已改名的历史证据标注 `[stale]`
+并轻微降权，但原文仍然返回。没有快照时不做失效判断。快照写入与检索相同的分区，因此
+仓库级失效标注只作用于该 `repo` 的历史证据。
+`SearchPolicy.skeleton_depth`（默认 `6`，范围 `[0, 40]`）控制证据装包时追加的 `[skeleton]`
+代码结构行数，设为 `0` 关闭；`SearchPolicy.relation_window`（默认 `0`，范围 `[0, 20]`）开启后
+会按 `code_relations`（`defines_symbol` / `touches_file` / `validates_test`）对已选证据做一次
+同目标关系扩展，扩展项分数打折后排在原始命中之后。两者都只影响装包，不新增召回通道。
 `SearchPolicy.evidence_limit`（默认 `12`）、`score_floor_ratio`（默认 `0.45`）、
 `min_evidence`（默认 `4`）与 `per_path_limit`（默认 `6`）共同约束单次检索返回的证据条数：
 `top_k` 只是上限，返回条数还会被分数下限、单会话与单路径限额截断，避免把整段会话塞进上下文。
 写入时同一 session 的多轮消息会合并成一条 `[episode]` 会话级经验卡（症状、根因、最终补丁与
 验证结论），只有存在补丁且其后有显式验证时才生成；原始消息切片保持不变。
 
+## CodingMemory 扩展能力
+
+以下能力与 [Coding Memory 扩展能力](algorithms/coding-memory-extensions.md) 一一对应，
+全部是工程增强，不构成论文结论，也不声称提升编码任务成功率。
+
+### 写入门控与遗忘
+
+`CodingMemory.add_guarded(request_id, user_id, session_id, messages, policy=None, repo="",
+author="")` 返回 `AdmissionResult(revision, decision)`；`AdmissionDecision` 带 `admitted` /
+`reason` / `novelty` / `duplicate_of` / `rival_author`。判定原因只有 `novel`（正常写入）、
+`idempotent`（幂等重试，返回原 revision）、`empty_content`（拒绝）、
+`redundant`（同作者近似重复，拒绝）与 `conflict_candidate`（跨作者近似重复，保留并登记
+写冲突）。`CodingMemory.add(...)` 语义不变，仍返回 scope revision。门控阈值由
+`SearchPolicy.admission_similarity`（默认 `0.95`，范围 `[0, 1]`）给出。
+
+`dmsa.memory.MemoryGovernance` 提供治理动作，绑定在 `CodingMemory.governance` 上：
+`record_exposure(user_id, chunk_ids, repo="")` 记账曝光、`trust_report(user_id, repo="")`
+返回全部条目的信任度与观测计数、`record_verdict(user_id, chunk_ids, repo="", *, confirmed,
+contradicted, verified)` 按反馈或任务结果更新计数、`forget(user_id, repo="", *, floor=0.1,
+min_age_days=30)` 淘汰长期未使用且低信任的条目、`restore(user_id, chunk_ids, repo="")`
+取消淘汰标记。淘汰只打标记不删原文，原文仍可按 ID 追溯。
+
+`dmsa.memory.MemoryStat` 是单条目观测统计，信任度由计数在读取时推导（基线 `0.5`，
+确认 `+0.15`、反驳 `-0.1`、验证 `+0.05`，夹在 `[0.02, 1.0]`，再按 30 天半衰期衰减）。
+`SearchPolicy.trust_weight`（默认 `0.02`，范围 `[0, 1]`）控制信任度以乘子形式进入排序的
+幅度。
+
+`dmsa.gradient.attribution` 提供条目级因果归因：`attribute_feedback` /
+`attribute_task` 只消费 Agent 明示的信号，失败类型只有 `coarse_chunk`、
+`identifier_confusion`、`stale_evidence` 才反驳召回条目；`attribute_trace_feedback` 与
+`attribute_trace_task` 按轨迹的仓库子域定位分区后写入统计。两者已接进
+`RetrievalFeedbackStore.feedback_with_attribution(...)` 与
+`IntegratedRSI.record_task_result(...)`。
+
+### 端到端有效性度量
+
+`dmsa.gradient.effectiveness.measure_effectiveness(path, scope)` 返回
+`EffectivenessReport`：检索侧给 `label_recall` 与 `hit_precision`，任务侧按
+`delivered` / `undelivered` / `unlabeled` 分组给任务数与成功率。任务侧是观察性对比
+（`observation` 字段显式标注口径），不是受控 A/B；样本不足时各项如实留空（`None`）。
+
+### 程序性记忆
+
+`CodingMemory.add_procedure(request_id, user_id, session_id, messages, repo="")` 从会话
+沉淀流程，返回 `Procedure` 或 `None`（没有显式有序步骤时不落盘）。`Procedure` 带
+`title` / `steps` / `preconditions` / `verification` / `trigger_terms` / `paths` /
+`outcome`；有验证行时 `outcome` 记 `reported_success`，否则 `unknown`。
+`CodingMemory.search_procedures(query, user_id, top_k=3, repo="")` 返回
+`ProcedureMatch`，其 `score` 是命中词项数。
+
+### 团队作用域与写冲突仲裁
+
+`dmsa.memory.team_scope(team_id, repo="")` 返回带 `team:` 前缀的团队共享作用域键，
+成员共享同一证据空间，仓库子域依旧隔离。`CodingMemory.team_scope(team_id, repo="")`
+是等价静态方法。
+
+`CodingMemory.conflicts(user_id, repo="", *, status="", limit=20)` 列出 `WriteConflict`
+（`id` / `scope` / `chunk_id` / `rival_chunk_id` / `author` / `rival_author` /
+`similarity` / `status` / `resolution` / `created_at` / `resolved_at`）。
+`CodingMemory.resolve_conflict(user_id, conflict_id, resolution, repo="")` 返回
+`ConflictResolution`（`conflict` / `applied` / `confirmed` / `contradicted`）。仲裁结论
+只有 `keep_new` / `keep_rival` / `keep_both`；前两者会把结论写回双方的信任计数。
+
+### 多跳检索与召回解释
+
+`CodingMemory.search_explained(query, user_id, top_k, policy=None, repo="", hops=1)`
+返回 `RecallExplanation`：`rounds` 是每轮的查询、补充词与候选数（`RecallRound`），
+`items` 逐条给 `channels` / `matched_terms` / `paths` / `symbols` / `reason`
+（`RecallItem`）。跳数上限 3；扩展只影响候选范围，不改变打分口径。
+
+### 记忆合并与跨仓库迁移
+
+`CodingMemory.consolidate(user_id, repo="", *, min_group=2, limit=500)` 返回
+`ConsolidationReport`（`scope` / `groups` / `written` / `skipped`），派生条目保留全部
+来源 ID，原始证据不被删除，同一规则重复合并幂等。
+`CodingMemory.transfer(user_id, source_repo, target_repo, *, limit=500)` 返回
+`TransferReport`（`source_scope` / `target_scope` / `transferred` / `skipped`）；含具体
+路径与符号的规则被拒绝并在 `skipped` 里列出泄漏项。
+`CodingMemory.consolidation_records(user_id, repo="")` 与
+`CodingMemory.transfer_records(user_id, repo="")` 列出历史记录（`ConsolidationRecord` /
+`TransferRecord`）。`dmsa.memory.Generalization` 与 `dmsa.memory.RuleGroup` 描述泛化后的
+规则与规则组，`transferable` 表示是否可跨仓库迁移。
+
+### 稠密混合检索与重排
+
+`CodingMemory.search_hybrid(query, user_id, top_k, policy=None, repo="", hybrid=None)`
+返回 `HybridResult`（`query` / `hits` / `items` / `channels` / `dense_available`）；
+`HybridItem` 给出每条证据的 `channels` / `contributions` / `agreement` /
+`dense_similarity` / `rerank_delta`。`HybridPolicy`（`dense_weight` /
+`agreement_bonus` / `redundancy_penalty` / `rerank_delta` / `rerank_depth` /
+`dense_min_similarity`）单独承载混合检索参数，不写进 `SearchPolicy`，因此 RSI 的基线与
+回放样本不受影响。没有嵌入器或没有稠密候选时 `dense_available` 为 `False`。
+
+### 时序 as-of 查询
+
+`dmsa.memory.AsOf(revision=None, timestamp=None)` 是时序坐标，至少要给一个坐标，两者
+都给时取交集；取值为空、负数或非整数时抛 `CodingMemoryValidationError`。
+`revision` 走 `requests.revision`（作用域内每次成功写入递增，历史完整），`timestamp`
+走 `memory_stats.created_at`（条目写入时刻的 Unix 秒；写入时同步建立统计行，因此覆盖
+全部新写入条目，旧库数据应改用 `revision`）。
+
+`CodingMemory.search_as_of(query, user_id, top_k, as_of, policy=None, repo="")` 返回
+`TemporalResult`（`query` / `hits` / `as_of` / `scope_revision`）。过滤在 SQL 层完成，
+所有召回通道统一生效；`scope_revision` 给出作用域当前的写入序号。普通
+`CodingMemory.search(...)` 的行为不变。
+
+## stdio MCP 工具清单
+
+`dmsa_coding_memory_*` 系列工具只在 stdio MCP（`dmsa-coding-memory-mcp`）暴露；HTTP
+路径目前只有 `/add`、`/search`、`/feedback`、`/task_result`、`/rsi/evolve`、
+`/rsi/rollback` 与 `/health`，不包含下表。
+
+| 工具 | 参数 | 用途 |
+|---|---|---|
+| `dmsa_coding_memory_search` | `query`、`top_k`、`task_id?`、`repo?` | 检索证据，返回 `trace_id` |
+| `dmsa_coding_memory_record` | `request_id`、`session_id`、`content`、`author?`、`repo?` | 写入经验，回报门控判定 |
+| `dmsa_coding_memory_status` | 无 | 确认连接、scope 与当前活动策略 |
+| `dmsa_coding_memory_feedback` | `trace_id`、`outcome`、`kind?`、`relevant_ids?` | 保存检索反馈，触发受门禁保护的策略进化 |
+| `dmsa_coding_memory_task_result` | `task_id`、`trace_id`、`outcome`、`tests_passed?`、`files_changed?`、`tokens?`、`latency_ms?`、`detail?` | 上报真实任务结果 |
+| `dmsa_coding_memory_governance` | `repo?`、`forget?`、`floor?`、`min_age_days?` | 查看信任度，可选执行遗忘淘汰 |
+| `dmsa_coding_memory_procedure` | `action?`、`request_id?`、`session_id?`、`content?`、`query?`、`top_k?`、`repo?` | 沉淀或匹配程序性记忆 |
+| `dmsa_coding_memory_effectiveness` | 无 | 度量检索侧标签召回率与任务侧分组成功率 |
+| `dmsa_coding_memory_conflicts` | `action?`、`conflict_id?`、`resolution?`、`status?`、`limit?`、`repo?` | 列出或仲裁跨作者写冲突 |
+| `dmsa_coding_memory_recall` | `query`、`top_k?`、`hops?`、`repo?` | 带召回解释的检索，可做多跳扩展 |
+| `dmsa_coding_memory_consolidate` | `repo?`、`min_group?`、`limit?` | 合并重复经验，返回合并报告 |
+| `dmsa_coding_memory_transfer` | `source_repo?`、`target_repo`、`limit?` | 跨仓库迁移通用规则，返回迁移报告 |
+| `dmsa_coding_memory_hybrid_search` | `query`、`top_k?`、`repo?` | 稠密混合检索，返回融合明细与重排增量 |
+| `dmsa_coding_memory_search_as_of` | `query`、`top_k?`、`as_of_revision?`、`as_of_timestamp?`、`repo?` | 时序回看检索，返回当时可见的内容与当前写入序号 |
+
 ## Offline RSI
+
+`dmsa.gradient.task_results.TaskResult` 与 `TaskResultStore` 保存真实任务结果
+（任务标识、关联 trace、成败、通过测试数、改动文件、token 与耗时），按 scope 隔离且同
+`task_id` 幂等；`IntegratedRSI.record_task_result(...)` 与 `IntegratedRSI.task_results(scope)`
+提供读写入口。结果只作为事实记录，系统不从失败反推根因，也不会据此直接激活策略。
+检索轨迹新增语料指纹、任务标识与仓库分区列，旧库打开时自动补列。
+`dmsa.gradient.task_gate.task_cases(scope, traces, labels, outcomes)` 把轨迹、已确认证据与
+任务终态拼成 `TaskCase`（只有同时具备终态与确认证据的轨迹才成为样本），
+`run_task_gate(memory, baseline, candidate, cases)` 要求候选策略保留每个已成功任务当时被确认
+的证据；`TaskGateReport.passed` 为假时 `IntegratedRSI.evolve` 拒绝激活并写
+`task_gate_rejected` 事件。没有任何任务样本时门禁是空过（`checked=0`），事件里如实记录。
+`dmsa.gradient.meta_evolution.compare_proposers(rsi, scope, budget_replays=6,
+proposer_factory=None, observer=None)` 在等回放预算下比较确定性提案器与模型辅助提案器，
+返回 `MetaEvolutionReport`（每臂 `status` / `candidates` / `replays` / `accepted` /
+最优均值指标 / `error_type`），只写一条 `meta_evolution` 审计事件，不激活任何策略；
+`budget_replays` 必须能让每个提案器至少跑一次回放，否则抛 `OfflineRSIError`。
+仅当某臂存在通过门禁的候选时才给出 `winner`，平局判给确定性提案器。
 
 `dmsa.gradient.RetrievalPolicy` wraps an immutable validated `SearchPolicy`.
 `run_replay(memory, baseline, candidate, cases, ..., development_only=True)`
 performs paired real retrieval against the same unchanged corpus snapshot and
 binds report hashes to policies, cases, corpus and fixed budgets. `gate(report)`
-rejects empty, mismatched, regressing or budget-invalid evidence and requires a
-per-case recall improvement. `PolicyRegistry.register` accepts only reports
+rejects empty, mismatched, regressing or budget-invalid evidence. The current gate
+(`offline-rsi-gate-v2`) additionally requires no per-case recall regression, no per-case NDCG
+regression, no token growth on cases without a recall gain, and at least one strict improvement
+in recall or ordering quality. `PolicyRegistry.register` accepts only reports
 executed in the current process through `run_replay`; it atomically persists
 candidates and decisions. `rollback(version)` selects a previously accepted
 policy. This API is for development evidence; runtime feedback does not train
@@ -104,7 +269,12 @@ or activate policies automatically.
 # Coding Memory HTTP API (development subset)
 
 `dmsa.mcp_server.http.create_app(memory, api_key)` exposes authenticated `POST
-/add`, `POST /search`, and unauthenticated `GET /health`. It does not close the
+/add`, `POST /search`, `POST /feedback`, `POST /task_result`, `POST /rsi/evolve`,
+`POST /rsi/rollback`, and unauthenticated `GET /health`. `POST /search` accepts an optional
+`task_id` that is bound to the retrieval trace; `POST /task_result` stores the verified task
+outcome separately from retrieval feedback. `/add` and `/search` also accept an optional
+`repo` string that selects the repository partition (`user#repo`); `/add` echoes it back so
+callers can confirm which partition was written. It does not close the
 injected `CodingMemory`; the CLI owns and closes its own database connection.
 Authentication accepts `Authorization: Bearer <key>`, `Authorization: Token
 <key>`, or `X-Api-Key`. `/add` accepts string content or text-part arrays; image

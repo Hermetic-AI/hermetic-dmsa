@@ -37,6 +37,12 @@ LIKE 兜底通道，同 scope 内对 `text/paths/symbols` 做转义后的字面�
 这些先验只影响排序与装包，不改变召回通道；其效果仍需代理噪声集与真实 Coding Agent 配对任务
 测量，不能当作论文实验结论。
 
+邻居扩展与关系扩展的分数按折扣系数下压，保证扩展证据永远排在它的父命中之后。折扣作用在
+证据质量调分之后的最终分上，而该分数可能是负值（先验扣分超过通道 RRF 贡献时，常见于没有
+代码结构的纯散文或日志片段）：直接乘折扣会把负分放大成更接近零的数，使扩展证据反超父命中，
+把真正命中查询词的切片挤到后面。因此实际取 `min(父分 × 折扣, 父分 − EXPANSION_EPSILON)`，
+间隔常量取 `1e-9`，在双精度下足够区分且不影响正分场景原有的折扣比例。
+
 `coding.episodes` 在写入时构造会话级经验卡：把同一 session 的多轮消息按写入顺序合并，抽取
 症状、根因、失败尝试次数、最终补丁（路径与正文）以及补丁之后出现的显式验证结论，形成一条
 `[episode]` 开头的独立证据切片。经验卡只在“存在补丁且其后有显式验证”时生成，未验证的尝试
@@ -90,3 +96,71 @@ ASCII 与代码约 4 字节 1 token），覆盖中文、长标识符以及来源
 同一实例的读取与写入事务共享 RLock，搜索和幂等预检不能看到该连接的未提交数据。
 embedding 在写事务之外执行，事务内再次检查幂等键。多个实例通过 SQLite WAL 和 busy timeout
 协调。单实例数据库读取串行化，吞吐量及 1.8B token 规模尚未验证。
+
+## 代码锚点层
+
+`coding.code_anchors` 从轨迹原文里确定性地抽取"代码结构事实"，不做语义推断：
+
+| 证据形态 | 锚点 kind | 字段 |
+|---|---|---|
+| `diff --git` 与 `+++ b/path` | `modifies` | path |
+| `--- a/path` | `mentions` | path |
+| ` ```lang path=x ` 代码块 | `mentions` | path |
+| `class` / `def`（按缩进归属到类） | `defines` | 限定符号及其逐级缩写 |
+| `tests/x.py::test_y` | `test` | 完整测试 id |
+| `File "x.py", line N, in f` | `frame` | path 与函数名 |
+
+补丁行先还原为真实代码行（只保留新增与上下文行，删除行不参与判定），因此 `+class`、
+`+    def` 这类带补丁前缀的声明同样能被识别为定义。每个切片的锚点写入 `code_anchors` 表，
+按 `(user_id, term)` 建索引；`SearchPolicy.anchor_weight`（默认 `0.6`，范围 `[0, 10]`）
+控制该通道的 RRF 权重，设为 `0` 可在配对回放里关闭锚点召回而不影响其它通道。
+
+证据文本在来源头之后追加一行 `[anchors] path::symbol; ...`，把"这段历史到底改了什么"
+变成结构化可消费信息，而不是让 Agent 自己从散文中推断。
+
+## 仓库快照与失效标注
+
+`coding.snapshot` 用标准库 `ast` 扫描工作区的 Python 文件，产出仓库相对路径、文件内容
+指纹与限定符号（如 `Handler.handle_request`）。`CodingMemory.save_repo_snapshot(user_id, root)`
+把快照写入 scope；检索时据此判断历史锚点是否仍然成立：路径在快照中消失、或限定符号与其
+末段名称都找不到时，证据被标注 `[stale]` 并轻微降权，但原文仍然返回，避免把"过期"当成
+"无用"。没有快照时不做任何失效判断，因此竞赛与离线评测路径不受影响。
+
+快照只描述 Python 源码事实，不推断调用关系、数据流或跨语言依赖；非 Python 文件只记录
+路径与指纹，不参与符号判定。
+
+## 代码骨架与工程关系
+
+`coding.skeleton.extract_skeleton(text, depth)` 从证据正文里确定性地抽出代码结构行
+（`class` / `def` / `import` / 装饰器等，最多 `depth` 行），证据装包时以 `[skeleton]`
+段追加在来源头之后。它只做行级识别，不解析语义、不改写正文；`SearchPolicy.skeleton_depth`
+（默认 `6`，范围 `[0, 40]`）设为 `0` 即完全关闭该段，因此可以在配对回放里单独测量它的收益。
+
+`code_relations(user_id, chunk_id, rel_type, target)` 把锚点转成工程关系边：`defines` 锚点
+产生 `defines_symbol`，`test` 锚点产生 `validates_test`，路径锚点产生 `touches_file`。
+`SearchPolicy.relation_window`（默认 `0`，范围 `[0, 20]`）开启后，装包阶段会对前
+`relation_window` 条已选证据做一次同 target 的关系扩展（"改了同一文件 / 定义了同一符号 /
+被同一测试覆盖"的历史切片），扩展项分数按 `RELATION_DISCOUNT` 折扣，保证排在原始命中之后。
+关系边只来自轨迹原文里的显式锚点，不做调用图或数据流推断。
+
+## 仓库维度分区
+
+`scope_key(user_id, repo)` 返回 `"user#repo"`（`repo` 为空时退化为 `user_id`），该复合键是
+写入、检索、向量、锚点、关系、快照、语料指纹与 RSI 轨迹共用的唯一分区键，因此不同仓库的
+证据不会互相召回，也不会互相污染回放样本。`repo` 在所有接口上都是可选增量参数，缺省行为与
+旧版本完全一致。
+
+分隔符 `#` 不允许出现在 `user_id` 或 `repo` 中：一旦允许，`a#b` 就无法反向归属，按用户清理
+数据时会漏删或误删相邻子域，`scope_key` 会直接抛 `CodingMemoryValidationError`。
+
+`delete_scope(user_id)` 不带 `repo` 时清理该用户的主 scope 与全部仓库子域（子域清单来自
+`scope_partitions`），带 `repo` 时只清理该分区；向量索引按同一批 scope 逐个删除。
+`scope_epochs` 中的已清空 scope 会保留 epoch，以维持语料指纹单调、避免"清空后重写"产生
+ABA 指纹。`save_repo_snapshot(user_id, root, repo=...)` 写入与检索相同的分区，因此仓库级
+失效标注只对该仓库的历史证据生效。
+
+## 扩展能力
+
+写入门控与遗忘淘汰、条目信任模型与因果归因、端到端有效性度量、程序性记忆、团队作用域
+与写冲突仲裁、多跳迭代检索与召回解释、记忆合并与跨仓库迁移、稠密混合检索与重排、时序
+as-of 查询各自独立成篇，见 [Coding Memory 扩展能力](coding-memory-extensions.md)。
