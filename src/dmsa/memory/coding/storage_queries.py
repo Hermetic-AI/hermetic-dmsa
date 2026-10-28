@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import sqlite3
 from collections.abc import Sequence
 
@@ -11,6 +10,7 @@ from dmsa.memory.coding.models import CodingMemoryError
 from dmsa.memory.coding.schema import scope_token
 from dmsa.memory.coding.temporal import AsOf, as_of_filter
 from dmsa.memory.coding.tokenize import GRAM
+from dmsa.memory.coding.vector_codec import decode_vector
 
 
 def _like_pattern(term: str) -> str:
@@ -152,7 +152,7 @@ def dense_candidates(
         "WHERE c.user_id=? AND v.user_id=? AND v.fingerprint=?" + clause,
         (user_id, user_id, fingerprint, *window),
     )
-    return count, [(r, tuple(json.loads(r["vector"]))) for r in rows]
+    return count, [(r, decode_vector(r["vector"])) for r in rows]
 
 
 def vectors_by_ids(
@@ -169,10 +169,29 @@ def vectors_by_ids(
     result: dict[str, tuple[float, ...]] = {}
     for row in rows:
         try:
-            result[str(row["chunk_id"])] = tuple(json.loads(str(row["vector"])))
+            result[str(row["chunk_id"])] = decode_vector(row["vector"])
         except (TypeError, ValueError):
             continue
     return result
+
+
+def message_prefixes(
+    db: sqlite3.Connection, user_id: str, message_ids: Sequence[str]
+) -> dict[str, str]:
+    """读取指定来源消息正文的前缀, 用于判断整条消息的形态.
+
+    只取前缀而不是全文: 判定整文件写入只需要看开头, 避免把长正文搬进内存。
+    """
+    if not message_ids:
+        return {}
+    unique = tuple(dict.fromkeys(message_ids))
+    placeholders = ",".join("?" for _ in unique)
+    rows = db.execute(
+        f"SELECT id, substr(content, 1, 64) AS head FROM messages "
+        f"WHERE user_id=? AND id IN ({placeholders})",
+        (user_id, *unique),
+    ).fetchall()
+    return {str(row["id"]): str(row["head"]) for row in rows}
 
 
 def neighbors(

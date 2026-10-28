@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import sqlite3
 import time
 from collections.abc import Iterable
@@ -24,6 +23,7 @@ from dmsa.memory.coding.models import (
 from dmsa.memory.coding.schema import scope_token
 from dmsa.memory.coding.teams import record_author, register_conflict
 from dmsa.memory.coding.trust_store import ensure_stats
+from dmsa.memory.coding.vector_codec import encode_vector
 
 
 def existing_revision(
@@ -124,7 +124,7 @@ def publish_request(
             vector = vectors[chunk_index]
             db.execute(
                 "INSERT INTO vectors VALUES(?,?,?,?,?)",
-                (cid, user_id, fingerprint, len(vector), json.dumps(vector)),
+                (cid, user_id, fingerprint, len(vector), encode_vector(vector)),
             )
     db.execute(
         "INSERT INTO corpus VALUES(?,?) ON CONFLICT(user_id) "
