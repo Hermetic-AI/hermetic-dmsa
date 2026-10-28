@@ -62,18 +62,21 @@ flowchart LR
 | `experience_weight` | 1.0 | 可追溯经验卡适用性排序先验；0 可作为关闭该先验的对照 |
 | `candidate_limit` | 240 | 各通道候选上限 |
 | `neighbor_window` | 1 | 邻近片段窗口；扩展证据的分数被压到父命中之下 |
-| `per_session_limit` | 16 | 单会话返回片段限额 |
+| `per_session_limit` | 40 | 单会话返回片段限额 |
 | `redundancy_threshold` | 0.93 | 词项相似度去重阈值 |
-| `evidence_limit` | 12 | 单次检索返回条数上限（`top_k` 只是上限） |
+| `evidence_limit` | 200 | 单次检索返回条数上限（`top_k` 只是上限，实际还受字符/token 预算收敛） |
 | `score_floor_ratio` | 0.45 | 低于最高分该比例的证据不再返回 |
 | `min_evidence` | 4 | 分数断层时仍保留的最少证据条数 |
-| `per_path_limit` | 6 | 同一路径返回片段限额 |
+| `per_path_limit` | 12 | 同一路径返回片段限额 |
+| `adjustment_weight` | 0.25 | 证据质量调分相对通道 RRF 分数的比例 |
 | `max_chars` / `max_tokens` | 120,000 字符 / 32,000 token | 返回预算，包含来源头 |
 | `dense_scan_limit` | 10,000 | scope 向量扫描上限 |
 
 `max_tokens` 用字符与 UTF-8 字节混合近似模型 token（CJK 约 1 字 1 token，ASCII 与代码约 4 字节 1 token），仍不是指定 tokenizer 的精确计数。预算不足以完整装入末尾条目时，会保留正文前缀并追加 `[truncated]` 标记，而不是整条丢弃。
 
-证据包默认是**紧凑**的：`top_k` 只是上限，实际返回受 `evidence_limit`、分数下限 `score_floor_ratio`、最小条数 `min_evidence`、单会话 `per_session_limit` 与单路径 `per_path_limit` 共同约束。理由是给 Agent 的上下文越长越容易稀释目标：真实平台快照上，旧默认一次返回约 32 条 / 6 万字符，紧凑默认返回 12 条 / 约 2.2 万字符，而目标函数仍在第 1–2 位。`min_evidence` 保证分数断层时不会只剩一条。
+证据包默认**给足额度**：`top_k` 只是上限，实际返回条数由 `evidence_limit`、字符/token 预算、分数下限 `score_floor_ratio`、最小条数 `min_evidence`、单会话 `per_session_limit` 与单路径 `per_path_limit` 共同收敛。平台契约固定 `top_k=100` 且答案侧只保留候选前缀，因此默认额度必须与 `top_k` 同量级——早期把上限设成 12 条的"紧凑包"在真实平台快照上把交付量压到请求量的 12%，风格参照类证据几乎检索不到。
+
+`adjustment_weight` 限制证据质量调分的影响力：调分项的量级（代码密度、词组重合、路径命中、验证标记）比通道 RRF 分数在相邻名次之间的差（rank 1 的 1/61 与 rank 12 的 1/72 相差约 0.0025）大一个数量级，不加限制时会整体压过通道排名，使不同查询排出几乎相同的结果。缩放到 0.25 后调分仍能在同分附近改变先后，但不再单独决定大序。
 
 ### 1.3 RSI 改什么
 

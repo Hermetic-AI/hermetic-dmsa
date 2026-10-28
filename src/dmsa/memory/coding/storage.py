@@ -6,7 +6,7 @@ import hashlib
 import json
 import sqlite3
 import threading
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from pathlib import Path
 
 from dmsa.memory.coding.anchor_store import (
@@ -23,6 +23,7 @@ from dmsa.memory.coding.snapshot import RepoSnapshot
 from dmsa.memory.coding.snapshot_store import load_snapshot, save_snapshot
 from dmsa.memory.coding.storage_queries import (
     exact_candidates,
+    message_prefixes,
     neighbors,
     scope_partitions,
     sparse_candidates,
@@ -207,6 +208,10 @@ class CodingStore:
     def neighbors(self, user_id: str, chunk_id: str, window: int) -> list[sqlite3.Row]:
         """读取同 request/session/message 的有限相邻切片."""
         return neighbors(self.db, user_id, chunk_id, window)
+
+    def message_prefixes(self, user_id: str, message_ids: Sequence[str]) -> dict[str, str]:
+        """读取指定来源消息正文的前缀, 用于判断整条消息的形态."""
+        return message_prefixes(self.db, user_id, message_ids)
 
     def revision(self, user_id: str) -> int:
         """读取 scope 当前 revision."""

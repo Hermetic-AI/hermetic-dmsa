@@ -9,6 +9,12 @@ from itertools import pairwise
 from dmsa.memory.coding.episodes import EPISODE_PREFIX
 
 _STALE_WRITE_PREFIX = "[tool_use Write]"
+# 平台轨迹里的推理段落标记: 这类内容是"相关历史"里最该被送进上下文的结论。
+_THINKING_PREFIX = "[thinking]"
+# 工具调用前缀里的工具名不是代码符号, 留在符号索引里会制造假命中。
+_TOOL_NOISE_SYMBOLS = frozenset(
+    {"tool", "tool_use", "tool_result", "file_path", "content", "path", "command"}
+)
 # 只认行首代码结构, 避免英文散文里的 if/for/return 也被当成代码密度。
 _CODE_RE = re.compile(
     r"^\s*(?:\d+[\s:\t]+)?(?:async\s+def|def|class)\s+[A-Za-z_]\w*"
@@ -161,6 +167,17 @@ def is_stale_write(body: str) -> bool:
     return body.lstrip().startswith(_STALE_WRITE_PREFIX)
 
 
+def clean_symbols(symbols: str) -> tuple[str, ...]:
+    """去掉工具调用前缀带来的伪符号, 保留真实代码标识符."""
+    kept: list[str] = []
+    for symbol in symbols.split():
+        if symbol.lower() in _TOOL_NOISE_SYMBOLS:
+            continue
+        if symbol not in kept:
+            kept.append(symbol)
+    return tuple(kept)
+
+
 def _is_low_density(body: str) -> bool:
     """长中文文本里重复填充占主导时视为低信息密度证据.
 
@@ -190,7 +207,7 @@ def _matches_target_path(features: QueryFeatures, body: str) -> bool:
 def _symbol_keyword_hits(features: QueryFeatures, symbols: str) -> int:
     """查询关键词命中证据符号片段的数量, 用于把函数级证据排到散文之上."""
     parts: set[str] = set()
-    for symbol in symbols.split():
+    for symbol in clean_symbols(symbols):
         parts.update(part for part in re.split(r"[^a-z0-9]+", symbol.lower()) if len(part) >= 3)
     if not parts:
         return 0
@@ -210,10 +227,14 @@ def evidence_adjustment(
         adjustment += 0.02
     if _ACTION_RE.search(body):
         adjustment += 0.005
+    # 推理结论是散文, 会被下面的"无有效词汇"判负; 但它恰恰是根因与结论的所在。
+    is_thinking = body.lstrip().startswith(_THINKING_PREFIX)
+    if is_thinking:
+        adjustment += 0.02
     code_hits = len(_CODE_RE.findall(body))
     if code_hits:
         adjustment += min(0.015, 0.0015 * code_hits)
-    elif not _USEFUL_RE.search(body):
+    elif not _USEFUL_RE.search(body) and not is_thinking:
         adjustment -= 0.02
     # 代码清单天然字符重复率高, 密度惩罚只用于没有代码的纯填充文本。
     if not code_hits and _is_low_density(body):

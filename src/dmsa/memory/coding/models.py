@@ -104,16 +104,21 @@ class SearchPolicy:
     candidate_limit: int = 240
     neighbor_window: int = 1
     max_chars: int = 120000
-    per_session_limit: int = 16
+    per_session_limit: int = 40
     redundancy_threshold: float = 0.93
     dense_scan_limit: int = 10000
     max_tokens: int = 32000
-    evidence_limit: int = 12
+    # 证据条数上限: 平台固定 top_k=100, 这里给足额度, 实际条数由 top_k、
+    # 字符预算与 token 预算共同收敛, 不再用一个远小于 top_k 的默认值截断。
+    evidence_limit: int = 200
     score_floor_ratio: float = 0.45
-    per_path_limit: int = 6
+    per_path_limit: int = 12
     min_evidence: int = 4
     trust_weight: float = 0.02
     admission_similarity: float = 0.95
+    # 证据质量调分相对通道 RRF 分数的比例: 调分项量级比通道排名差大一个数量级,
+    # 不加限制时会整体压过通道排名, 使不同查询排出几乎相同的结果。
+    adjustment_weight: float = 0.25
 
     def __post_init__(self) -> None:
         """拒绝非有限权重、布尔整数和无界策略值."""
@@ -124,6 +129,7 @@ class SearchPolicy:
             self.score_floor_ratio,
             self.trust_weight,
             self.admission_similarity,
+            self.adjustment_weight,
         ):
             if isinstance(value, bool) or not isinstance(value, (float, int)):
                 raise CodingMemoryValidationError("policy weights must be finite numbers")
@@ -141,6 +147,8 @@ class SearchPolicy:
             raise CodingMemoryValidationError("admission_similarity must be in [0, 1]")
         if not 0 <= self.stale_penalty <= 1:
             raise CodingMemoryValidationError("stale_penalty must be in [0, 1]")
+        if not 0 <= self.adjustment_weight <= 10:
+            raise CodingMemoryValidationError("adjustment_weight must be in [0, 10]")
         if any(
             type(value) is not int or not lower <= value <= upper
             for value, lower, upper in (

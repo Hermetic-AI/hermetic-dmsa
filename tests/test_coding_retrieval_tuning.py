@@ -11,19 +11,40 @@ def test_tuned_defaults_support_platform_top_k() -> None:
     """默认策略必须能为 top_k=100 留出候选与预算."""
     policy = SearchPolicy()
     assert policy.candidate_limit == 240
-    assert policy.per_session_limit == 16
+    assert policy.per_session_limit == 40
     assert policy.max_chars == 120000
     assert policy.max_tokens == 32000
     assert policy.redundancy_threshold == 0.93
 
 
 def test_default_policy_bounds_evidence_volume() -> None:
-    """默认策略限制返回条数、分数下限、路径与最小证据量."""
+    """默认策略的限制项必须大于平台固定 top_k, 不能再用一个更小的值截断."""
     policy = SearchPolicy()
-    assert policy.evidence_limit == 12
+    assert policy.evidence_limit >= 100
     assert policy.score_floor_ratio == 0.45
-    assert policy.per_path_limit == 6
+    assert policy.per_path_limit == 12
     assert policy.min_evidence == 4
+
+
+def test_default_policy_delivers_top_k_evidence(tmp_path) -> None:
+    """默认策略在 top_k=100 下必须能交付远超旧的 12 条上限."""
+    memory = CodingMemory(tmp_path / "volume.db")
+    for index in range(40):
+        memory.add(
+            f"r{index}",
+            "u",
+            f"s{index}",
+            [
+                SourceMessage(
+                    "assistant",
+                    f"cache_refresh handler {index} def slugify_{index}(text): return text",
+                )
+            ],
+        )
+    hits = memory.search("cache_refresh slugify", "u", 100)
+    assert len(hits) > 12, "默认策略不应再把平台要的 100 条截断成 12 条"
+    assert len(hits) <= 100
+    memory.close()
 
 
 def test_evidence_limit_caps_returned_hits(tmp_path) -> None:
@@ -160,3 +181,54 @@ def test_symbol_extraction_keeps_code_identifiers_only() -> None:
     assert "validate_user" in code.symbols
     assert "CacheLoader" in code.symbols
     assert "text" not in code.symbols
+
+
+def _gap(hits: list, good: str, plain: str) -> float:
+    """返回高分证据与普通证据的分数差."""
+    good_score = next(hit.score for hit in hits if good in hit.content)
+    plain_score = next(hit.score for hit in hits if plain in hit.content)
+    return good_score - plain_score
+
+
+def test_adjustment_weight_scales_quality_adjustment(tmp_path) -> None:
+    """调分权重为 0 时质量调分不参与打分, 调大后能拉开差距."""
+    memory = CodingMemory(tmp_path / "adjust.db")
+    memory.add(
+        "r-good",
+        "u",
+        "s-good",
+        [SourceMessage("assistant", "cache_refresh def fix_it(): return 1")],
+    )
+    memory.add(
+        "r-plain",
+        "u",
+        "s-plain",
+        [SourceMessage("assistant", "cache_refresh alpha beta gamma delta")],
+    )
+    neutral = memory.search("cache_refresh", "u", 5, SearchPolicy(adjustment_weight=0))
+    weighted = memory.search("cache_refresh", "u", 5, SearchPolicy(adjustment_weight=5))
+    neutral_gap = _gap(neutral, "fix_it", "alpha beta")
+    weighted_gap = _gap(weighted, "fix_it", "alpha beta")
+    assert abs(neutral_gap) < 0.005, "调分权重为 0 时差距只能来自通道排名"
+    assert weighted_gap > neutral_gap + 0.01, "调分权重必须能改变先后"
+    memory.close()
+
+
+def test_reported_success_outranks_unknown_result(tmp_path) -> None:
+    """已验证成功的证据优先于同分的未知结果证据."""
+    memory = CodingMemory(tmp_path / "outcome.db")
+    memory.add(
+        "r-ok",
+        "u",
+        "s-ok",
+        [SourceMessage("assistant", "cache_refresh handler alpha # pytest tests passed")],
+    )
+    memory.add(
+        "r-plain",
+        "u",
+        "s-plain",
+        [SourceMessage("assistant", "cache_refresh handler beta")],
+    )
+    hits = memory.search("cache_refresh handler", "u", 5, SearchPolicy(adjustment_weight=0))
+    assert "pytest tests passed" in hits[0].content
+    memory.close()

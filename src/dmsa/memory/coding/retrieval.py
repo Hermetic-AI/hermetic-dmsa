@@ -30,8 +30,9 @@ from dmsa.memory.coding.trust import BASE_TRUST, trust_multiplier
 from dmsa.memory.coding.trust_store import evicted_ids, trust_map
 from dmsa.memory.coding.vector_index import VectorIndex
 
-# 显式结果标签只做小幅排序先验: 声称成功的来源优先, 已观测失败的来源降权。
-_OUTCOME_BONUS = {"reported_success": 0.004, "observed_failure": -0.002}
+# 显式结果标签是排序先验: 声称成功的来源优先, 已观测失败的来源降权。
+# 幅度与通道 RRF 分数同量级, 才能在通道排名接近时改变先后。
+_OUTCOME_BONUS = {"reported_success": 0.02, "observed_failure": -0.008}
 
 
 class CodingRetriever:
@@ -146,7 +147,10 @@ class CodingRetriever:
             ranks[key] = ranks.get(key, 0.0) + policy.experience_weight * (
                 _OUTCOME_BONUS.get(str(row["outcome"]), 0.0)
             )
-            ranks[key] = ranks.get(key, 0.0) + policy.experience_weight * evidence_adjustment(
+            # 证据质量调分按 adjustment_weight 缩放: 未缩放时调分项的量级远大于
+            # 通道 RRF 分数在相邻名次之间的差, 会整体压过通道排名。
+            quality = policy.experience_weight * policy.adjustment_weight
+            ranks[key] = ranks.get(key, 0.0) + quality * evidence_adjustment(
                 features, text, str(row["paths"]), str(row["symbols"])
             )
             # 快照确认失效的证据轻微降权, 但保留原文供人工判断。

@@ -9,7 +9,7 @@ from dmsa.memory.coding.code_anchors import anchor_summary
 from dmsa.memory.coding.episodes import SUPERSEDED_OUTCOME
 from dmsa.memory.coding.models import SearchHit, SearchPolicy
 from dmsa.memory.coding.packing import select_evidence
-from dmsa.memory.coding.ranking import is_stale_write
+from dmsa.memory.coding.ranking import clean_symbols, is_stale_write
 from dmsa.memory.coding.skeleton import extract_skeleton
 from dmsa.memory.coding.snapshot import RepoSnapshot, stale_anchors
 from dmsa.memory.coding.storage import CodingStore
@@ -17,6 +17,9 @@ from dmsa.memory.coding.temporal import AsOf
 
 # 截断后的正文短于该值时直接放弃, 避免只有来源头没有内容的噪声条目。
 MIN_TRUNCATED_CHARS = 160
+# 来源头里最多列出的路径与符号个数, 避免头部过长挤占正文预算。
+MAX_HEADER_PATHS = 3
+MAX_HEADER_SYMBOLS = 6
 # 邻居与关系扩展的分数折扣, 保证扩展证据排在原始命中之后。
 EXPANSION_DISCOUNT = 0.5
 RELATION_DISCOUNT = 0.6
@@ -86,12 +89,19 @@ def _expand(
 
 
 def _header(item: Mapping[str, object]) -> str:
-    """构造来源引用头."""
-    return (
+    """构造来源引用头, 带文件归属与符号, 让 Agent 能直接定位到要改的位置."""
+    header = (
         f"[request={item['request_id']} session={item['session_id']} "
         f"message={item['message_id']} chars={item['start']}:{item['end']} "
-        f"role={item['role']} outcome={item['outcome']}]\n"
+        f"role={item['role']} outcome={item['outcome']}]"
     )
+    paths = str(item.get("paths") or "").split()[:MAX_HEADER_PATHS]
+    symbols = clean_symbols(str(item.get("symbols") or ""))[:MAX_HEADER_SYMBOLS]
+    if paths:
+        header += f"[path={' '.join(paths)}]"
+    if symbols:
+        header += f"[symbol={' '.join(symbols)}]"
+    return header + "\n"
 
 
 def build_hits(
@@ -122,10 +132,21 @@ def build_hits(
             continue
         ranked.append((cid, ranks[cid], dict(row)))
     selected = select_evidence(ranked, top_k, policy)
+    # 整文件写入的旧快照只有首片带标记, 续接片看起来像普通代码;
+    # 按来源消息整体判定, 避免把过期文件正文当成现行实现注入。
+    stale_messages = {
+        message_id
+        for message_id, head in store.message_prefixes(
+            user_id, tuple(str(item[2]["message_id"]) for item in selected)
+        ).items()
+        if is_stale_write(head)
+    }
     anchors = store.anchors_by_ids(user_id, tuple(item[0] for item in selected))
     hits: list[SearchHit] = []
     char_budget, token_budget = policy.max_chars, policy.max_tokens
     for cid, score, item in selected:
+        if str(item["message_id"]) in stale_messages:
+            continue
         source = _header(item)
         chunk_anchors = anchors.get(cid, ())
         summary = anchor_summary(chunk_anchors)

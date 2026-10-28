@@ -19,10 +19,8 @@ def test_discount_stays_below_negative_base() -> None:
     assert _discount(base, EXPANSION_DISCOUNT) < base
 
 
-def test_expanded_neighbor_never_outranks_parent(tmp_path: Path) -> None:
-    """父命中为负时, 同一条消息的邻居切片必须排在父命中之后."""
-    memory = CodingMemory(tmp_path / "expand.sqlite", policy=SearchPolicy())
-    scope = "expand-scope"
+def _add_filler(memory: CodingMemory, scope: str) -> str:
+    """写入一条纯填充正文, 返回第一条切片的 ID."""
     # 纯填充正文没有任何代码或修复类词汇, 证据质量调分会给出负分。
     filler = "alpha beta gamma delta " * 120
     memory.add(
@@ -35,11 +33,33 @@ def test_expanded_neighbor_never_outranks_parent(tmp_path: Path) -> None:
         "SELECT id, start FROM chunks WHERE user_id=? ORDER BY start", (scope,)
     ).fetchall()
     assert len(rows) >= 2
-    parent_id = str(rows[0][0])
+    return str(rows[0][0])
+
+
+def test_expanded_neighbor_never_outranks_parent(tmp_path: Path) -> None:
+    """命中词项的切片必须排在同一条消息的扩展邻居之前."""
+    memory = CodingMemory(tmp_path / "expand.sqlite", policy=SearchPolicy())
+    scope = "expand-scope"
+    parent_id = _add_filler(memory, scope)
     hits = memory.search("cache", scope, 5)
     assert hits, "查询必须返回候选"
     assert hits[0].id == parent_id, "命中词项的切片必须排在扩展邻居之前"
+    if len(hits) > 1:
+        assert hits[0].score > hits[1].score
+    memory.close()
+
+
+def test_negative_parent_keeps_expansion_below(tmp_path: Path) -> None:
+    """父命中为负时, 同一条消息的邻居切片仍必须排在父命中之后."""
+    # 调分权重放大到 10 时, 负向质量调分足以把父命中压到负分。
+    policy = SearchPolicy(adjustment_weight=10)
+    memory = CodingMemory(tmp_path / "expand_neg.sqlite", policy=policy)
+    scope = "expand-neg-scope"
+    parent_id = _add_filler(memory, scope)
+    hits = memory.search("cache", scope, 5)
+    assert hits, "查询必须返回候选"
     assert hits[0].score < 0, "该场景用于锁定负分分支"
+    assert hits[0].id == parent_id, "命中词项的切片必须排在扩展邻居之前"
     if len(hits) > 1:
         assert hits[0].score > hits[1].score
     memory.close()

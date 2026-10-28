@@ -100,9 +100,13 @@ schema migration，旧数据库可直接打开，分词器为 `unicode61` 的历
 代码结构行数，设为 `0` 关闭；`SearchPolicy.relation_window`（默认 `0`，范围 `[0, 20]`）开启后
 会按 `code_relations`（`defines_symbol` / `touches_file` / `validates_test`）对已选证据做一次
 同目标关系扩展，扩展项分数打折后排在原始命中之后。两者都只影响装包，不新增召回通道。
-`SearchPolicy.evidence_limit`（默认 `12`）、`score_floor_ratio`（默认 `0.45`）、
-`min_evidence`（默认 `4`）与 `per_path_limit`（默认 `6`）共同约束单次检索返回的证据条数：
-`top_k` 只是上限，返回条数还会被分数下限、单会话与单路径限额截断，避免把整段会话塞进上下文。
+`SearchPolicy.evidence_limit`（默认 `200`）、`score_floor_ratio`（默认 `0.45`）、
+`min_evidence`（默认 `4`）、`per_path_limit`（默认 `12`）与 `per_session_limit`（默认 `40`）
+共同约束单次检索返回的证据条数：`top_k` 只是上限，返回条数还会被分数下限、单会话与单路径
+限额、字符/token 预算截断。默认额度与外部契约固定的 `top_k=100` 同量级，避免把请求量压到
+个位数。`SearchPolicy.adjustment_weight`（默认 `0.25`，范围 `[0, 10]`）缩放证据质量调分，
+使其不会整体压过通道 RRF 排名。装包的来源头额外带 `[path=…]` 与 `[symbol=…]`；历史整文件
+写入按来源消息整体剔除，续接片不再被当成现行代码注入。
 写入时同一 session 的多轮消息会合并成一条 `[episode]` 会话级经验卡（症状、根因、最终补丁与
 验证结论），只有存在补丁且其后有显式验证时才生成；原始消息切片保持不变。
 
