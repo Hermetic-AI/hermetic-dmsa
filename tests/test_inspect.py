@@ -24,7 +24,6 @@ from dmsa.memory import MemoryLayer, create_prompt_context
 @pytest.fixture
 def populated_db(tmp_path: Path) -> str:
     """填充一个 SQLite 数据库用于 inspect。"""
-    from pmd.store.sqlite_store import SQLiteStore
 
     db_path = tmp_path / "test_inspect.sqlite"
     # PMD 的 SQLiteStore 默认 schema 用 WAL；inspect 用只读连接
@@ -121,13 +120,65 @@ def populated_db(tmp_path: Path) -> str:
     # 填充节点
     cursor.executemany(
         """
-        INSERT INTO memory_nodes (id, version, content, content_type, creator_prompt_id, creator_agent_id, creation_context, requires_grad, grad_learning_rate, created_at, updated_at, last_accessed_at, status, importance, tags)
+        INSERT INTO memory_nodes (
+            id, version, content, content_type, creator_prompt_id,
+            creator_agent_id, creation_context, requires_grad, grad_learning_rate,
+            created_at, updated_at, last_accessed_at, status, importance, tags
+        )
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         [
-            ("node-a", 1, "first memory", "TEXT", "p1", "agent1", "{}", 0, 0.0, 100.0, 100.0, 100.0, "ACTIVE", 0.9, '["user_pref","important"]'),
-            ("node-b", 1, "second memory", "TEXT", "p2", "agent1", "{}", 1, 0.1, 110.0, 110.0, 110.0, "ACTIVE", 0.5, '["derived"]'),
-            ("node-c", 1, "third memory", "TEXT", "p3", "agent2", "{}", 0, 0.0, 120.0, 120.0, 120.0, "TOMBSTONED", 0.2, "[]"),
+            (
+                "node-a",
+                1,
+                "first memory",
+                "TEXT",
+                "p1",
+                "agent1",
+                "{}",
+                0,
+                0.0,
+                100.0,
+                100.0,
+                100.0,
+                "ACTIVE",
+                0.9,
+                '["user_pref","important"]',
+            ),
+            (
+                "node-b",
+                1,
+                "second memory",
+                "TEXT",
+                "p2",
+                "agent1",
+                "{}",
+                1,
+                0.1,
+                110.0,
+                110.0,
+                110.0,
+                "ACTIVE",
+                0.5,
+                '["derived"]',
+            ),
+            (
+                "node-c",
+                1,
+                "third memory",
+                "TEXT",
+                "p3",
+                "agent2",
+                "{}",
+                0,
+                0.0,
+                120.0,
+                120.0,
+                120.0,
+                "TOMBSTONED",
+                0.2,
+                "[]",
+            ),
         ],
     )
     # 填充边
@@ -137,17 +188,31 @@ def populated_db(tmp_path: Path) -> str:
     )
     # 填充 prompt context
     cursor.execute(
-        "INSERT INTO prompt_contexts VALUES (?, ?, NULL, ?, ?, '', 'gpt-4o', 0.7, 100.0, NULL, '{}', 1, NULL, '[]', '[]', '[]')",
+        "INSERT INTO prompt_contexts VALUES "
+        "(?, ?, NULL, ?, ?, '', 'gpt-4o', 0.7, 100.0, NULL, '{}', 1, NULL, '[]', '[]', '[]')",
         ("p1", "agent1", "you are a helper", "hello"),
     )
     # 填充 gradient
     cursor.execute(
-        "INSERT INTO backward_gradients (ancestor_node_id, descendant_node_id, edge_id, gradient_text, llm_used, token_cost, feedback_source, severity, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        ("node-a", "node-b", "(node-a,node-b,DERIVED_FROM)", "be more verbose", "static", 5, "USER", 0.8, 150.0),
+        "INSERT INTO backward_gradients (ancestor_node_id, descendant_node_id, "
+        "edge_id, gradient_text, llm_used, token_cost, feedback_source, severity, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            "node-a",
+            "node-b",
+            "(node-a,node-b,DERIVED_FROM)",
+            "be more verbose",
+            "static",
+            5,
+            "USER",
+            0.8,
+            150.0,
+        ),
     )
     # 填充 version
     cursor.execute(
-        "INSERT INTO version_snapshots VALUES (?, NULL, 120.0, 'hash-abc', 'test snapshot', 'v0.1', 3, 1, 'sha256-xyz')",
+        "INSERT INTO version_snapshots VALUES "
+        "(?, NULL, 120.0, 'hash-abc', 'test snapshot', 'v0.1', 3, 1, 'sha256-xyz')",
         ("snap-1",),
     )
     conn.commit()
@@ -333,6 +398,7 @@ def test_inspect_metrics_no_table_returns_message(tmp_path: Path) -> None:
     """表不存在时返回 message。"""
     db_path = tmp_path / "empty.sqlite"
     import sqlite3
+
     conn = sqlite3.connect(str(db_path))
     conn.close()
     m = inspect_metrics(str(db_path))
@@ -357,6 +423,7 @@ def test_inspect_versions_empty_db(tmp_path: Path) -> None:
     """空 DB 返回 message。"""
     db_path = tmp_path / "empty.sqlite"
     import sqlite3
+
     conn = sqlite3.connect(str(db_path))
     conn.close()
     v = inspect_versions(str(db_path))
@@ -397,8 +464,8 @@ def test_to_text_node(populated_db: str) -> None:
 
 def test_to_text_lineage(populated_db: str) -> None:
     """to_text 输出 lineage 树文本。"""
-    l = inspect_lineage(populated_db, "node-a", depth=2, direction="DOWN")
-    text = to_text(l)
+    lineage = inspect_lineage(populated_db, "node-a", depth=2, direction="DOWN")
+    text = to_text(lineage)
     assert "Lineage Inspection" in text
     assert "node-a" in text
 
@@ -459,9 +526,7 @@ def test_cli_node_not_found(populated_db: str, capsys: pytest.CaptureFixture[str
 
 def test_cli_lineage(populated_db: str, capsys: pytest.CaptureFixture[str]) -> None:
     """CLI lineage 子命令。"""
-    rc = inspect_main(
-        ["--storage", populated_db, "lineage", "--node-id", "node-a", "--depth", "2"]
-    )
+    rc = inspect_main(["--storage", populated_db, "lineage", "--node-id", "node-a", "--depth", "2"])
     assert rc == 0
     captured = capsys.readouterr()
     assert "Lineage" in captured.out

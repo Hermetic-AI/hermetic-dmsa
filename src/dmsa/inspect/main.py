@@ -56,9 +56,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_lineage = sub.add_parser("lineage", help="show lineage tree from a node")
     p_lineage.add_argument("--node-id", type=str, required=True)
     p_lineage.add_argument("--depth", type=int, default=3)
-    p_lineage.add_argument(
-        "--direction", type=str, default="BOTH", choices=["UP", "DOWN", "BOTH"]
-    )
+    p_lineage.add_argument("--direction", type=str, default="BOTH", choices=["UP", "DOWN", "BOTH"])
 
     p_metrics = sub.add_parser("metrics", help="show backward gradient metrics")
     p_metrics.add_argument(

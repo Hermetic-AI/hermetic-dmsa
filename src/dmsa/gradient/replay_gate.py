@@ -1,4 +1,10 @@
-"""离线策略回放的固定升级门禁."""
+"""离线策略回放的多目标固定升级门禁.
+
+门禁同时检查召回、排序质量与上下文开销: 召回不得退化, 排序质量不得下降,
+没有召回收益的样本不允许变贵, 并且必须存在可重复的严格改善.
+"""
+
+from __future__ import annotations
 
 import math
 
@@ -9,22 +15,29 @@ def _valid_result(item: CaseResult, report: ReplayReport) -> bool:
     """拒绝格式错误及超预算的单例结果."""
     if not isinstance(item, CaseResult):
         return False
-    if (not isinstance(item.retrieved_ids, tuple) or not isinstance(item.relevant_ids, tuple)
-            or not item.relevant_ids
-            or any(not isinstance(x, str) or not x for x in (
-                item.case_id, item.slice, *item.retrieved_ids, *item.relevant_ids))):
+    if (
+        not isinstance(item.retrieved_ids, tuple)
+        or not isinstance(item.relevant_ids, tuple)
+        or not item.relevant_ids
+        or any(
+            not isinstance(x, str) or not x
+            for x in (item.case_id, item.slice, *item.retrieved_ids, *item.relevant_ids)
+        )
+    ):
         return False
     return (
         len(item.retrieved_ids) <= report.top_k
         and len(set(item.retrieved_ids)) == len(item.retrieved_ids)
         and len(set(item.relevant_ids)) == len(item.relevant_ids)
-        and type(item.used_chars) is int and 0 <= item.used_chars <= report.max_chars
-        and type(item.used_tokens) is int and 0 <= item.used_tokens <= report.max_tokens
+        and type(item.used_chars) is int
+        and 0 <= item.used_chars <= report.max_chars
+        and type(item.used_tokens) is int
+        and 0 <= item.used_tokens <= report.max_tokens
     )
 
 
 def gate(report: ReplayReport) -> bool:
-    """拒绝无效或回归证据, 并要求至少一例召回改善。."""
+    """拒绝无效或回归证据, 并要求至少一例在召回或排序上严格改善."""
     if not isinstance(report, ReplayReport):
         return False
     if (
@@ -40,8 +53,9 @@ def gate(report: ReplayReport) -> bool:
         or not report.cases_hash
         or not report.baseline_hash
         or not report.candidate_hash
-        or any(type(x) is not int or x < 1
-               for x in (report.top_k, report.max_chars, report.max_tokens))
+        or any(
+            type(x) is not int or x < 1 for x in (report.top_k, report.max_chars, report.max_tokens)
+        )
     ):
         return False
     if any(not _valid_result(item, report) for item in (*report.before, *report.after)):
@@ -59,6 +73,10 @@ def gate(report: ReplayReport) -> bool:
             return False
         if not all(math.isfinite(x.recall) for x in (old, new)) or new.recall < old.recall:
             return False
-        improvement |= new.recall > old.recall
-    return improvement
-
+        if not all(math.isfinite(x.ndcg) for x in (old, new)) or new.ndcg < old.ndcg:
+            return False
+        # 没有召回收益的样本不允许变贵, 避免用 token 换无关证据。
+        if new.recall <= old.recall and new.used_tokens > old.used_tokens:
+            return False
+        improvement |= new.recall > old.recall or new.ndcg > old.ndcg
+    return improvement and report.mean_ndcg_after >= report.mean_ndcg_before

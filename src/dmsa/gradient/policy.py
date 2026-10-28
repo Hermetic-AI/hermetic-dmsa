@@ -89,4 +89,21 @@ def propose_policy(
             )
         elif item.kind == "missing_context":
             proposals.append(current.changed(neighbor_window=min(10, policy.neighbor_window + 1)))
+        elif item.kind == "identifier_confusion":
+            # 标识符被语义通道淹没时, 提高代码锚点通道的召回权重。
+            proposals.append(current.changed(anchor_weight=min(10.0, policy.anchor_weight + 0.2)))
+        elif item.kind == "stale_evidence":
+            # 历史证据与当前代码不一致时, 降低派生经验卡的先验权重。
+            proposals.append(
+                current.changed(experience_weight=max(0.0, policy.experience_weight - 0.1))
+            )
+        elif item.kind == "coarse_chunk":
+            # 切片过大导致关键行被截断时, 缩小切片窗口。
+            proposals.append(current.changed(chunk_size=max(400, policy.chunk_size - 400)))
+        elif item.kind == "missing_relation":
+            # 同符号历史证据没有互相召回时, 打开工程关系扩展。
+            proposals.append(current.changed(relation_window=min(20, policy.relation_window + 1)))
+        elif item.kind == "missing_structure":
+            # 证据缺少代码结构时, 增加骨架摘要深度。
+            proposals.append(current.changed(skeleton_depth=min(40, policy.skeleton_depth + 2)))
     return tuple(dict.fromkeys(proposals))

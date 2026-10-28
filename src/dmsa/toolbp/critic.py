@@ -7,7 +7,6 @@
 from __future__ import annotations
 
 import re
-from typing import Mapping
 
 from dmsa.types import FeedbackSignal, ToolCallRecord
 
@@ -25,20 +24,43 @@ class ToolCallCritic:
     - 其他错误 → 通用提示
     """
 
-    __slots__ = ("_format_keywords", "_permission_keywords", "_missing_keywords", "_id_gen")
+    __slots__ = ("_format_keywords", "_id_gen", "_missing_keywords", "_permission_keywords")
 
     def __init__(self) -> None:
+        """初始化工具调用批评器, 装载格式/权限/缺失三类关键词表。"""
         self._format_keywords = (
-            "format", "schema", "type", "required", "json", "parse", "validation",
-            "格式", "类型", "必填", "解析", "校验",
+            "format",
+            "schema",
+            "type",
+            "required",
+            "json",
+            "parse",
+            "validation",
+            "格式",
+            "类型",
+            "必填",
+            "解析",
+            "校验",
         )
         self._permission_keywords = (
-            "permission", "unauthorized", "forbidden", "auth", "token",
-            "权限", "授权", "令牌",
+            "permission",
+            "unauthorized",
+            "forbidden",
+            "auth",
+            "token",
+            "权限",
+            "授权",
+            "令牌",
         )
         self._missing_keywords = (
-            "not found", "missing", "404", "does not exist", "no such",
-            "找不到", "不存在", "缺失",
+            "not found",
+            "missing",
+            "404",
+            "does not exist",
+            "no such",
+            "找不到",
+            "不存在",
+            "缺失",
         )
 
     def critique(self, record: ToolCallRecord) -> FeedbackSignal:
@@ -50,7 +72,10 @@ class ToolCallCritic:
                 feedback_text=f"tool {record.tool_name!r} succeeded",
                 severity=0.1,
                 source="HEURISTIC",
-                extra_context={"call_id": record.call_id, "result_type": type(record.result).__name__},
+                extra_context={
+                    "call_id": record.call_id,
+                    "result_type": type(record.result).__name__,
+                },
             )
 
         error_lower = record.error.lower()

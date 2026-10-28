@@ -8,11 +8,12 @@ from __future__ import annotations
 import os
 import struct
 import time
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 from dmsa.types import FeedbackSignal, GradientSample
 
-__all__ = ["GradientSample", "FeedbackSignal", "make_sample", "make_feedback"]
+__all__ = ["FeedbackSignal", "GradientSample", "make_feedback", "make_sample"]
 
 
 def _new_id() -> str:

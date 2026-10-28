@@ -49,9 +49,7 @@ def tests_pass(root: Path, test_file: str) -> bool:
     return completed.returncode == 0
 
 
-def solve(
-    evidence: list[str], root: Path, test_file: str, max_attempts: int = 3
-) -> SolveResult:
+def solve(evidence: list[str], root: Path, test_file: str, max_attempts: int = 3) -> SolveResult:
     """按排名尝试证据中的完整代码块; 只有测试通过才算解决."""
     if type(max_attempts) is not int or max_attempts < 1:
         raise ValueError("max_attempts must be a positive integer")

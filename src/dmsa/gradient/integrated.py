@@ -1,19 +1,22 @@
-# ruff: noqa: D415, RUF002
 """记忆检索、反馈、模型提案、回放和策略激活的统一协调器。"""
 
 from __future__ import annotations
 
 import json
 import threading
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from typing import Any
 
+from dmsa.gradient.attribution import attribute_trace_task
+from dmsa.gradient.diagnosis import diagnose
 from dmsa.gradient.feedback import RetrievalFeedbackStore
 from dmsa.gradient.model_advisor import ModelAssistedPolicyProposer
 from dmsa.gradient.policy import OfflineRSIError, RetrievalPolicy, propose_policy
 from dmsa.gradient.replay import gate, run_replay
 from dmsa.gradient.replay_models import digest
-from dmsa.memory import CodingMemory
+from dmsa.gradient.task_gate import TaskGateReport, run_task_gate, task_cases
+from dmsa.gradient.task_results import TaskResult, TaskResultStore
+from dmsa.memory import CodingMemory, scope_key
 
 
 class IntegratedRSI:
@@ -40,16 +43,84 @@ class IntegratedRSI:
             else RetrievalPolicy(self.memory.policy)
         )
 
-    def search(self, query: str, scope: str, top_k: int) -> dict[str, Any]:
+    def search(
+        self,
+        query: str,
+        scope: str,
+        top_k: int,
+        task_id: str | None = None,
+        *,
+        dense: bool = True,
+        repo: str = "",
+    ) -> dict[str, Any]:
         """检索采用活动策略，返回可提交反馈的轨迹 ID。"""
         store = RetrievalFeedbackStore(self.memory.store.path)
         try:
             policy = self.policy(store, scope)
-            hits = self.memory.search(query, scope, top_k, policy.search)
+            effective = policy.search if dense else replace(policy.search, dense_weight=0.0)
+            hits = self.memory.search(query, scope, top_k, effective, repo=repo)
+            corpus_hash = self.memory.corpus_state((scope_key(scope, repo),)).fingerprint
             trace = store.trace(
-                scope, query, top_k, [h.id for h in hits], digest(asdict(policy.search))
+                scope,
+                query,
+                top_k,
+                [h.id for h in hits],
+                digest(asdict(policy.search)),
+                task_id=task_id,
+                corpus_hash=corpus_hash,
+                repo=repo,
             )
-            return {"trace_id": trace, "data": [asdict(h) for h in hits]}
+            return {"trace_id": trace, "repo": repo, "data": [asdict(h) for h in hits]}
+        finally:
+            store.close()
+
+    def record_task_result(
+        self,
+        scope: str,
+        task_id: str,
+        trace_id: str,
+        outcome: str,
+        *,
+        tests_passed: int = 0,
+        files_changed: tuple[str, ...] = (),
+        tokens: int = 0,
+        latency_ms: int = 0,
+        detail: str = "",
+    ) -> dict[str, Any]:
+        """记录真实任务结果; 与检索反馈分开存放, 不参与根因推断."""
+        store = TaskResultStore(self.memory.store.path)
+        try:
+            result = TaskResult(
+                task_id=task_id,
+                scope=scope,
+                trace_id=trace_id,
+                outcome=outcome,
+                tests_passed=tests_passed,
+                files_changed=files_changed,
+                tokens=tokens,
+                latency_ms=latency_ms,
+                detail=detail,
+            )
+            stored = store.record(result)
+            attribution = attribute_trace_task(store.db, scope, trace_id, outcome) if stored else {}
+            return {
+                "stored": stored,
+                "scope": scope,
+                "task_id": task_id,
+                "attribution": attribution,
+            }
+        finally:
+            store.close()
+
+    def task_results(self, scope: str) -> dict[str, Any]:
+        """读取 scope 内已记录的任务结果与成功失败计数."""
+        store = TaskResultStore(self.memory.store.path)
+        try:
+            results = store.list(scope)
+            return {
+                "results": [item.to_dict() for item in results],
+                "summary": store.summary(scope),
+            }
         finally:
             store.close()
 
@@ -60,7 +131,9 @@ class IntegratedRSI:
             proposer = None
             try:
                 baseline = self.policy(store, scope)
-                diagnostics, cases = store.diagnostics(scope), store.cases(scope)
+                diagnoses = diagnose(store.diagnosis_rows(scope))
+                diagnostics = tuple(item.to_diagnostic() for item in diagnoses)
+                cases = store.cases(scope)
                 candidates = propose_policy(baseline, diagnostics, development_only=True)
                 if not cases or not candidates:
                     result: dict[str, Any] = {"status": "insufficient_feedback"}
@@ -110,9 +183,25 @@ class IntegratedRSI:
                         "replay_passed" if accepted else "replay_rejected",
                         {"report": report.to_dict(), "hash": report.report_hash},
                     )
-                    if accepted:
-                        self._activate(store, scope, baseline, candidate, report.corpus_hash)
-                        return {"status": "activated", "version": digest(asdict(candidate.search))}
+                    if not accepted:
+                        continue
+                    task_report = self._task_gate(store, scope, baseline, candidate)
+                    store.event(
+                        scope,
+                        "task_gate_passed" if task_report.passed else "task_gate_rejected",
+                        task_report.to_dict(),
+                    )
+                    if not task_report.passed:
+                        continue
+                    self._activate(
+                        store,
+                        scope,
+                        baseline,
+                        candidate,
+                        report.corpus_hash,
+                        partitions=tuple(sorted({case.user_id for case in cases})),
+                    )
+                    return {"status": "activated", "version": digest(asdict(candidate.search))}
                 return {"status": "rejected"}
             except Exception as exc:
                 store.event(scope, "evolution_failed", {"error_type": type(exc).__name__})
@@ -122,6 +211,30 @@ class IntegratedRSI:
                     proposer.close()
                 store.close()
 
+    def _task_gate(
+        self,
+        store: RetrievalFeedbackStore,
+        scope: str,
+        baseline: RetrievalPolicy,
+        candidate: RetrievalPolicy,
+    ) -> TaskGateReport:
+        """用已记录的任务结果与已确认证据复核候选策略."""
+        traces = store.traces(scope)
+        labels = store.labels(scope)
+        outcomes = {item.task_id: item.outcome for item in self._task_results(scope)}
+        cases = task_cases(scope, traces, labels, outcomes)
+        if not cases:
+            return TaskGateReport(0, 0, 0, (), ())
+        return run_task_gate(self.memory, baseline, candidate, cases)
+
+    def _task_results(self, scope: str) -> tuple[TaskResult, ...]:
+        """读取 scope 内已记录的任务结果."""
+        store = TaskResultStore(self.memory.store.path)
+        try:
+            return store.list(scope)
+        finally:
+            store.close()
+
     def _activate(
         self,
         store: RetrievalFeedbackStore,
@@ -129,13 +242,20 @@ class IntegratedRSI:
         baseline: RetrievalPolicy,
         candidate: RetrievalPolicy,
         corpus_hash: str,
+        *,
+        partitions: tuple[str, ...] = (),
     ) -> None:
-        """用写锁复核基线，避免旧回放覆盖并发新策略。"""
+        """用写锁复核基线，避免旧回放覆盖并发新策略。
+
+        `partitions` 是回放样本覆盖的完整分区键（可能含仓库子域）；缺省时退回
+        scope 本身，与单仓库场景保持一致。
+        """
+        observed = partitions or (scope,)
         with store.db:
             store.db.execute("BEGIN IMMEDIATE")
             if self.policy(store, scope) != baseline:
                 raise OfflineRSIError("stale baseline")
-            if self.memory.corpus_state((scope,)).fingerprint != corpus_hash:
+            if self.memory.corpus_state(observed).fingerprint != corpus_hash:
                 raise OfflineRSIError("corpus changed before activation")
             for policy in (baseline, candidate):
                 body = asdict(policy.search)

@@ -16,9 +16,9 @@
 from __future__ import annotations
 
 from dmsa.mcp_server.protocol import (
+    JsonRpcErrorCode,
     JsonRpcRequest,
     JsonRpcResponse,
-    JsonRpcErrorCode,
 )
 from dmsa.mcp_server.server import MCPServer
 from dmsa.mcp_server.tools import (
@@ -33,10 +33,6 @@ from dmsa.mcp_server.tools import (
 )
 
 __all__ = [
-    "JsonRpcRequest",
-    "JsonRpcResponse",
-    "JsonRpcErrorCode",
-    "MCPServer",
     "DMSA_TOOLS",
     "TOOL_ADD_MEMORY",
     "TOOL_APPLY_GRADIENT",
@@ -45,4 +41,8 @@ __all__ = [
     "TOOL_SEARCH",
     "TOOL_SNAPSHOT",
     "TOOL_TOOL_CALL",
+    "JsonRpcErrorCode",
+    "JsonRpcRequest",
+    "JsonRpcResponse",
+    "MCPServer",
 ]

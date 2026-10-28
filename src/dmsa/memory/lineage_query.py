@@ -52,9 +52,7 @@ class LineageQuery:
     depth: int = 2
     direction: LineageDirection = LineageDirection.BOTH
     edge_types: frozenset[PMDEdgeType] = field(
-        default_factory=lambda: frozenset(
-            {PMDEdgeType.DERIVED_FROM, PMDEdgeType.CREATED_FROM}
-        )
+        default_factory=lambda: frozenset({PMDEdgeType.DERIVED_FROM, PMDEdgeType.CREATED_FROM})
     )
     filters: dict[str, Any] = field(default_factory=dict)
     limit: int = 1000

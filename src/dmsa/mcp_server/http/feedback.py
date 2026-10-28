@@ -1,4 +1,3 @@
-# ruff: noqa: D415, RUF002
 """集成 RSI 的认证 HTTP 契约。"""
 
 from __future__ import annotations
@@ -6,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Literal
 
 from fastapi import Depends, FastAPI
-from pydantic import BaseModel, ConfigDict, Field, StrictStr
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr
 
 from dmsa.gradient.feedback import RetrievalFeedbackStore
 from dmsa.gradient.integrated import IntegratedRSI
@@ -24,8 +23,31 @@ class FeedbackContract(ScopeContract):
 
     trace_id: StrictStr = Field(min_length=1, max_length=64)
     outcome: Literal["success", "failure"]
-    kind: Literal["unknown", "exact_miss", "redundancy", "missing_context"] = "unknown"
+    kind: Literal[
+        "coarse_chunk",
+        "exact_miss",
+        "identifier_confusion",
+        "missing_context",
+        "missing_relation",
+        "missing_structure",
+        "redundancy",
+        "stale_evidence",
+        "unknown",
+    ] = "unknown"
     relevant_ids: list[StrictStr] = Field(default_factory=list, max_length=100)
+
+
+class TaskResultContract(ScopeContract):
+    """任务级结果上报, 只记录事实, 不参与根因推断。"""
+
+    task_id: StrictStr = Field(min_length=1, max_length=128)
+    trace_id: StrictStr = Field(min_length=1, max_length=64)
+    outcome: Literal["success", "failure"]
+    tests_passed: StrictInt = Field(default=0, ge=0)
+    files_changed: list[StrictStr] = Field(default_factory=list, max_length=100)
+    tokens: StrictInt = Field(default=0, ge=0)
+    latency_ms: StrictInt = Field(default=0, ge=0)
+    detail: StrictStr = Field(default="", max_length=2000)
 
 
 class RollbackContract(ScopeContract):
@@ -62,6 +84,21 @@ def install_feedback(app: FastAPI, rsi: IntegratedRSI, authenticate: Any) -> Non
             if changed
             else {"status": "duplicate_feedback"},
         }
+
+    @app.post("/task_result", dependencies=[Depends(authenticate)])
+    def task_result(payload: TaskResultContract) -> dict[str, Any]:
+        """保存真实任务结果; 与检索反馈分开存放, 不触发策略进化."""
+        return rsi.record_task_result(
+            payload.user_id,
+            payload.task_id,
+            payload.trace_id,
+            payload.outcome,
+            tests_passed=payload.tests_passed,
+            files_changed=tuple(payload.files_changed),
+            tokens=payload.tokens,
+            latency_ms=payload.latency_ms,
+            detail=payload.detail,
+        )
 
     @app.post("/rsi/propose", dependencies=[Depends(authenticate)])
     @app.post("/rsi/evolve", dependencies=[Depends(authenticate)])

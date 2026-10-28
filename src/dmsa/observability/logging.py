@@ -71,6 +71,7 @@ class JsonLogger:
     """JSON logger 包装器。"""
 
     def __init__(self, name: str = _DEFAULT_LOGGER_NAME) -> None:
+        """初始化 JSON logger 包装器, 绑定底层 logging logger。"""
         self._logger = logging.getLogger(name)
         self._name = name
 
@@ -120,4 +121,4 @@ def get_logger(name: str = _DEFAULT_LOGGER_NAME) -> JsonLogger:
     return JsonLogger(name)
 
 
-__all__ = ["JsonLogger", "JsonFormatter", "configure_root", "get_logger"]
+__all__ = ["JsonFormatter", "JsonLogger", "configure_root", "get_logger"]

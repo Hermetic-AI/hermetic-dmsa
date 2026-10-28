@@ -14,14 +14,11 @@ from dmsa.toolbp import (
     EditOp,
     ToolBPEngine,
     ToolCallCritic,
-    ToolCallRecord,
-    ToolSchemaNode,
     UpdateLeafOp,
     UpdateRequiredOp,
     make_call_record,
     make_schema_node,
 )
-from dmsa.toolbp.edit_ops import apply_edit_op
 from dmsa.toolbp.ast_projection import (
     SchemaNode,
     dump_schema,
@@ -29,7 +26,7 @@ from dmsa.toolbp.ast_projection import (
     iter_nodes,
     parse_schema,
 )
-
+from dmsa.toolbp.edit_ops import apply_edit_op
 
 # ============================================================================
 # ast_projection

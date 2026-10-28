@@ -5,22 +5,21 @@ from __future__ import annotations
 import pytest
 
 from dmsa.errors import (
-    EmbeddingFailedError,
+    ClusteringFailedError,
     FusionConflictError,
     GradientAggregationError,
 )
 from dmsa.gradient import (
-    ConflictDetector,
     ConditionalBranchSynthesizer,
+    ConflictDetector,
     FallbackSingleLinkBackend,
-    FusionClient,
     HashEmbedder,
     RuleBasedFusion,
     SGAAggregator,
     StaticFusion,
     make_sample,
 )
-from dmsa.gradient.clustering import HDBSCANBackend, OUTLIER_CLUSTER_ID, get_default_backend
+from dmsa.gradient.clustering import OUTLIER_CLUSTER_ID, get_default_backend
 from dmsa.gradient.embedding import (
     cosine_distance,
     cosine_similarity,
@@ -28,7 +27,6 @@ from dmsa.gradient.embedding import (
     vector_mean,
 )
 from dmsa.gradient.routing import SynthesizedBranch
-
 
 # ============================================================================
 # HashEmbedder
@@ -54,7 +52,7 @@ def test_hash_embedder_different_for_different_text() -> None:
 
 def test_hash_embedder_dim_validation() -> None:
     """dim <= 0 抛错。"""
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="dim must be positive"):
         HashEmbedder(dim=0)
 
 
@@ -102,7 +100,7 @@ def test_cosine_distance_invariant() -> None:
 
 def test_cosine_dim_mismatch_raises() -> None:
     """维度不匹配抛错。"""
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="dimension mismatch"):
         cosine_similarity([1.0], [1.0, 2.0])
 
 
@@ -123,7 +121,7 @@ def test_vector_mean() -> None:
 
 def test_vector_mean_empty_raises() -> None:
     """空序列抛错。"""
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="cannot compute mean of empty sequence"):
         vector_mean([])
 
 
@@ -134,8 +132,8 @@ def test_vector_mean_empty_raises() -> None:
 
 def _make_sample_with_embedding(text: str, dim: int = 32) -> object:
     """造一个带 embedding 的 GradientSample。"""
-    from dmsa.types import GradientSample
     from dmsa.gradient.embedding import HashEmbedder
+    from dmsa.types import GradientSample
 
     embedder = HashEmbedder(dim=dim)
     vec = embedder.embed(text)
@@ -150,7 +148,6 @@ def _make_sample_with_embedding(text: str, dim: int = 32) -> object:
 
 def test_fallback_backend_groups_similar_samples() -> None:
     """相同文本（嵌入完全相同）应聚到同一簇。"""
-    embedder = HashEmbedder(dim=32)
     # 两个完全相同的样本 + 一个 outlier
     samples = [
         _make_sample_with_embedding("apple banana"),
@@ -173,12 +170,10 @@ def test_fallback_backend_rejects_unembedded() -> None:
     from dmsa.types import GradientSample
 
     samples = [
-        GradientSample(
-            sample_id="x", feedback_text="a", source="U", severity=1.0, embedding=None
-        )
+        GradientSample(sample_id="x", feedback_text="a", source="U", severity=1.0, embedding=None)
     ]
     backend = FallbackSingleLinkBackend()
-    with pytest.raises(Exception):  # ClusteringFailedError
+    with pytest.raises(ClusteringFailedError, match="lack embeddings"):
         backend.cluster(samples)
 
 
@@ -190,7 +185,6 @@ def test_fallback_backend_empty_input() -> None:
 
 def test_fallback_backend_centroid_computed() -> None:
     """质心 = 簇内向量均值。"""
-    embedder = HashEmbedder(dim=8)
     samples = [
         _make_sample_with_embedding("a", dim=8),
         _make_sample_with_embedding("a", dim=8),  # 完全相同
@@ -229,12 +223,8 @@ def test_static_fusion_basic() -> None:
     from dmsa.types import GradientSample
 
     samples = [
-        GradientSample(
-            sample_id="a", feedback_text="first feedback", source="U", severity=0.5
-        ),
-        GradientSample(
-            sample_id="b", feedback_text="second feedback", source="U", severity=0.7
-        ),
+        GradientSample(sample_id="a", feedback_text="first feedback", source="U", severity=0.5),
+        GradientSample(sample_id="b", feedback_text="second feedback", source="U", severity=0.7),
     ]
     fusion = StaticFusion()
     fused = fusion.fuse(cluster_id=0, samples=samples)
@@ -261,9 +251,7 @@ def test_rule_based_detects_conflict_with_negation_and_directive() -> None:
     from dmsa.types import GradientSample
 
     samples = [
-        GradientSample(
-            sample_id="a", feedback_text="不要使用 markdown", source="U", severity=1.0
-        ),
+        GradientSample(sample_id="a", feedback_text="不要使用 markdown", source="U", severity=1.0),
         GradientSample(
             sample_id="b", feedback_text="应该 always use markdown", source="U", severity=1.0
         ),
@@ -278,12 +266,8 @@ def test_rule_based_no_conflict_when_only_directive() -> None:
     from dmsa.types import GradientSample
 
     samples = [
-        GradientSample(
-            sample_id="a", feedback_text="应该详细", source="U", severity=1.0
-        ),
-        GradientSample(
-            sample_id="b", feedback_text="应该简洁", source="U", severity=1.0
-        ),
+        GradientSample(sample_id="a", feedback_text="应该详细", source="U", severity=1.0),
+        GradientSample(sample_id="b", feedback_text="应该简洁", source="U", severity=1.0),
     ]
     fusion = RuleBasedFusion()
     fused = fusion.fuse(cluster_id=0, samples=samples)
@@ -326,7 +310,7 @@ def test_conflict_detector_finds_distant_clusters() -> None:
 
 def test_conflict_detector_threshold_validation() -> None:
     """threshold 必须在 [0, 1]。"""
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=r"threshold must be in \[0, 1\]"):
         ConflictDetector(threshold=1.5)
 
 
@@ -370,12 +354,8 @@ def test_branch_synthesizer_synthesize_all() -> None:
     """synthesize_all 为每个冲突簇生成条件分支。"""
     from dmsa.types import FusedGradient
 
-    fa = FusedGradient(
-        cluster_id=0, fused_text="use detailed text", support_size=1, confidence=0.5
-    )
-    fb = FusedGradient(
-        cluster_id=1, fused_text="use concise text", support_size=1, confidence=0.5
-    )
+    fa = FusedGradient(cluster_id=0, fused_text="use detailed text", support_size=1, confidence=0.5)
+    fb = FusedGradient(cluster_id=1, fused_text="use concise text", support_size=1, confidence=0.5)
     syn = ConditionalBranchSynthesizer()
     branches = syn.synthesize_all(
         conflicts=[(0, 1, 0.8)],
@@ -405,9 +385,7 @@ def test_aggregator_too_many_samples_raises() -> None:
     from dmsa.types import GradientSample
 
     samples = [
-        GradientSample(
-            sample_id=str(i), feedback_text="x", source="U", severity=1.0
-        )
+        GradientSample(sample_id=str(i), feedback_text="x", source="U", severity=1.0)
         for i in range(11)
     ]
     agg = SGAAggregator(max_samples=10)
@@ -417,7 +395,7 @@ def test_aggregator_too_many_samples_raises() -> None:
 
 def test_aggregator_max_samples_validation() -> None:
     """max_samples <= 0 抛错。"""
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="max_samples must be positive"):
         SGAAggregator(max_samples=0)
 
 
@@ -450,7 +428,7 @@ def test_aggregator_handles_identical_samples() -> None:
     samples = [make_sample(feedback_text="same text") for _ in range(5)]
     agg = SGAAggregator()
     result = agg.aggregate(samples)
-    non_outlier = [f for f in result.fused_gradients if not f.cluster_id == OUTLIER_CLUSTER_ID]
+    non_outlier = [f for f in result.fused_gradients if f.cluster_id != OUTLIER_CLUSTER_ID]
     assert len(non_outlier) == 1
     assert non_outlier[0].support_size == 5
 

@@ -1,4 +1,3 @@
-# ruff: noqa: D415
 """启动本地只读 CodingMemory 浏览页面。"""
 
 from __future__ import annotations

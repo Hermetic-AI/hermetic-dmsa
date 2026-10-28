@@ -1,4 +1,3 @@
-# ruff: noqa: RUF002
 """HTTP 部署配置与挂载密钥读取。."""
 
 from __future__ import annotations

@@ -1,69 +1,80 @@
-# ruff: noqa: D415, RUF001, RUF002
 """将 CodingMemory 通过 stdio MCP 暴露给 Codex。"""
 
 from __future__ import annotations
 
-import asyncio
 import json
-import os
-import sys
-import threading
 from pathlib import Path
 from typing import Any, TextIO
 
+from dmsa.gradient.feedback import RetrievalFeedbackStore
+from dmsa.gradient.integrated import IntegratedRSI
+from dmsa.mcp_server.coding_consolidation import (
+    ConsolidateArgs,
+    TransferArgs,
+    consolidate_payload,
+    parse_consolidate,
+    parse_transfer,
+    transfer_payload,
+)
+from dmsa.mcp_server.coding_evidence import (
+    procedure_payload,
+    record_payload,
+    search_payload,
+)
+from dmsa.mcp_server.coding_governance import (
+    conflicts_payload,
+    effectiveness_payload,
+    governance_report,
+    recall_payload,
+    status_payload,
+)
+from dmsa.mcp_server.coding_hybrid import HybridArgs, hybrid_payload, parse_hybrid
+from dmsa.mcp_server.coding_temporal import TemporalArgs, parse_temporal, temporal_payload
+from dmsa.mcp_server.coding_tool_schemas import TOOLS
+from dmsa.mcp_server.coding_tools import (
+    ConflictArgs,
+    FeedbackArgs,
+    ProcedureArgs,
+    RecallArgs,
+    RecordArgs,
+    SearchArgs,
+    TaskResultArgs,
+    parse_conflict,
+    parse_feedback,
+    parse_governance,
+    parse_procedure,
+    parse_recall,
+    parse_record,
+    parse_search,
+    parse_task_result,
+)
 from dmsa.mcp_server.protocol import (
     JsonRpcErrorCode,
     JsonRpcRequest,
     make_error_response,
     make_response,
-    parse_request,
 )
-from dmsa.memory import CodingMemory, SearchPolicy, SourceMessage
+from dmsa.memory import CodingMemory
 from dmsa.observability import get_logger
 
-TOOLS: list[dict[str, Any]] = [
-    {
-        "name": "dmsa_coding_memory_search",
-        "description": "检索本项目过去的缺陷修复、设计决策和验证经验；编码前调用。",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "当前任务、报错、文件或符号"},
-                "top_k": {"type": "integer", "minimum": 1, "maximum": 20, "default": 5},
-            },
-            "required": ["query"],
-        },
-    },
-    {
-        "name": "dmsa_coding_memory_record",
-        "description": "在任务验证后沉淀可复用的代码经验，需明确区分事实、决策和验证结果。",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "request_id": {"type": "string", "description": "稳定幂等键，如任务/提交标识"},
-                "session_id": {"type": "string", "description": "任务或会话标识"},
-                "content": {"type": "string", "description": "问题、根因、改动、测试及结果"},
-            },
-            "required": ["request_id", "session_id", "content"],
-        },
-    },
-    {
-        "name": "dmsa_coding_memory_status",
-        "description": "检查当前 CodingMemory 数据库和项目隔离范围。",
-        "inputSchema": {"type": "object", "properties": {}},
-    },
-]
 _logger = get_logger("dmsa.mcp_server.coding_memory")
 
 
 class CodingMemoryMCPServer:
     """使用 DMSA CodingMemory 实例响应 MCP 工具请求。"""
 
-    def __init__(self, memory: CodingMemory, scope: str, path: Path) -> None:
-        """保存已打开的记忆库及只读连接信息。"""
+    def __init__(
+        self,
+        memory: CodingMemory,
+        scope: str,
+        path: Path,
+        rsi: IntegratedRSI | None = None,
+    ) -> None:
+        """保存已打开的记忆库、只读连接信息与可选 RSI 协调器。"""
         self.memory = memory
         self.scope = scope
         self.path = path
+        self.rsi = rsi
 
     async def handle(self, request: JsonRpcRequest) -> dict[str, Any] | None:
         """分发 MCP 请求；通知消息不返回 JSON-RPC 响应。"""
@@ -98,49 +109,9 @@ class CodingMemoryMCPServer:
         if not isinstance(arguments, dict):
             return self._tool_error(request, "arguments must be an object")
         try:
-            if name == "dmsa_coding_memory_status":
-                result: Any = {
-                    "backend": "CodingMemory",
-                    "database": str(self.path),
-                    "scope": self.scope,
-                    "available": self.path.exists() or str(self.path) == ":memory:",
-                }
-            elif name == "dmsa_coding_memory_search":
-                query = arguments.get("query")
-                top_k = arguments.get("top_k", 5)
-                if not isinstance(query, str) or type(top_k) is not int:
-                    return self._tool_error(request, "query must be text and top_k an integer")
-                hits = self.memory.search(
-                    query, self.scope, top_k, SearchPolicy(dense_weight=0.0)
-                )
-                result = {
-                    "scope": self.scope,
-                    "hits": [
-                        {"id": hit.id, "content": hit.content, "score": hit.score}
-                        for hit in hits
-                    ],
-                }
-            elif name == "dmsa_coding_memory_record":
-                request_id = arguments.get("request_id")
-                session_id = arguments.get("session_id")
-                content = arguments.get("content")
-                if not isinstance(request_id, str) or not isinstance(session_id, str):
-                    return self._tool_error(request, "request_id and session_id must be text")
-                if not isinstance(content, str):
-                    return self._tool_error(request, "content must be text")
-                revision = self.memory.add(
-                    request_id,
-                    self.scope,
-                    session_id,
-                    [SourceMessage("assistant", content)],
-                )
-                result = {"scope": self.scope, "revision": revision, "stored": True}
-            else:
-                return self._tool_error(request, f"unknown tool: {name!r}")
+            result: Any = self._dispatch(name, arguments)
             content_result = {
-                "content": [
-                    {"type": "text", "text": json.dumps(result, ensure_ascii=False)}
-                ]
+                "content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False)}]
             }
             return make_response(content_result, request.id)
         except Exception as exc:
@@ -150,6 +121,139 @@ class CodingMemoryMCPServer:
             )
             return self._tool_error(request, "coding memory operation failed")
 
+    def _dispatch(self, name: Any, arguments: dict[str, Any]) -> dict[str, Any]:
+        """按工具名分派到对应实现。"""
+        if name == "dmsa_coding_memory_status":
+            return self._status()
+        if name == "dmsa_coding_memory_search":
+            return self._search(parse_search(arguments))
+        if name == "dmsa_coding_memory_record":
+            return self._record(parse_record(arguments))
+        if name == "dmsa_coding_memory_feedback":
+            return self._feedback(parse_feedback(arguments))
+        if name == "dmsa_coding_memory_task_result":
+            return self._task_result(parse_task_result(arguments))
+        if name == "dmsa_coding_memory_governance":
+            return self._governance(parse_governance(arguments))
+        if name == "dmsa_coding_memory_effectiveness":
+            return self._effectiveness()
+        if name == "dmsa_coding_memory_procedure":
+            return self._procedure(parse_procedure(arguments))
+        if name == "dmsa_coding_memory_conflicts":
+            return self._conflicts(parse_conflict(arguments))
+        if name == "dmsa_coding_memory_recall":
+            return self._recall(parse_recall(arguments))
+        if name == "dmsa_coding_memory_consolidate":
+            return self._consolidate(parse_consolidate(arguments))
+        if name == "dmsa_coding_memory_transfer":
+            return self._transfer(parse_transfer(arguments))
+        if name == "dmsa_coding_memory_hybrid_search":
+            return self._hybrid(parse_hybrid(arguments))
+        if name == "dmsa_coding_memory_search_as_of":
+            return self._temporal(parse_temporal(arguments))
+        raise ValueError(f"unknown tool: {name!r}")
+
+    def _status(self) -> dict[str, Any]:
+        """报告后端、数据库、scope 以及 RSI 与当前活动策略是否真的生效。"""
+        return status_payload(self.memory, self.scope, self.rsi, str(self.path))
+
+    def _governance(self, args: Any) -> dict[str, Any]:
+        """报告记忆条目的信任度, 可选执行遗忘淘汰。"""
+        return governance_report(
+            self.memory,
+            self.scope,
+            repo=args.repo,
+            forget=args.forget,
+            floor=args.floor,
+            min_age_days=args.min_age_days,
+        )
+
+    def _effectiveness(self) -> dict[str, Any]:
+        """度量记忆的实际有效性; 没有真实样本时如实留空."""
+        return effectiveness_payload(self.memory, self.scope)
+
+    def _procedure(self, args: ProcedureArgs) -> dict[str, Any]:
+        """沉淀或匹配程序性记忆; 没有显式步骤时不落盘并如实回报."""
+        return procedure_payload(self.memory, self.scope, args)
+
+    def _conflicts(self, args: ConflictArgs) -> dict[str, Any]:
+        """列出待仲裁的跨作者写冲突, 或按结论仲裁其中一条."""
+        return conflicts_payload(self.memory, self.scope, args)
+
+    def _recall(self, args: RecallArgs) -> dict[str, Any]:
+        """返回带召回说明的检索结果, 可选多跳迭代扩展."""
+        return recall_payload(self.memory, self.scope, args, self.rsi)
+
+    def _consolidate(self, args: ConsolidateArgs) -> dict[str, Any]:
+        """合并同一作用域内重复出现的经验, 返回合并报告."""
+        return consolidate_payload(self.memory, self.scope, args)
+
+    def _transfer(self, args: TransferArgs) -> dict[str, Any]:
+        """把可复用的通用规则迁移到另一个仓库, 返回迁移报告."""
+        return transfer_payload(self.memory, self.scope, args)
+
+    def _hybrid(self, args: HybridArgs) -> dict[str, Any]:
+        """执行稠密混合检索, 返回融合明细与重排增量."""
+        return hybrid_payload(self.memory, self.scope, args, self.rsi)
+
+    def _temporal(self, args: TemporalArgs) -> dict[str, Any]:
+        """按时序坐标检索历史证据, 返回当时可见的内容与当前写入序号."""
+        return temporal_payload(self.memory, self.scope, args, self.rsi)
+
+    def _search(self, args: SearchArgs) -> dict[str, Any]:
+        """检索证据; 有 RSI 时走活动策略并返回可反馈的轨迹 ID。"""
+        return search_payload(self.memory, self.scope, args, self.rsi)
+
+    def _record(self, args: RecordArgs) -> dict[str, Any]:
+        """写入一条已验证的工程经验, 并回报写入门控的判定。"""
+        return record_payload(self.memory, self.scope, args)
+
+    def _feedback(self, args: FeedbackArgs) -> dict[str, Any]:
+        """保存显式检索反馈, 并触发一次受门禁保护的策略进化."""
+        if self.rsi is None:
+            raise ValueError("feedback requires persistent memory")
+        store = RetrievalFeedbackStore(self.memory.store.path)
+        try:
+            changed, attribution = store.feedback_with_attribution(
+                self.scope, args.trace_id, args.outcome, args.kind, list(args.relevant_ids)
+            )
+            store.event(
+                self.scope,
+                "feedback_saved",
+                {
+                    "trace_id": args.trace_id,
+                    "outcome": args.outcome,
+                    "kind": args.kind,
+                },
+            )
+        finally:
+            store.close()
+        return {
+            "scope": self.scope,
+            "stored": True,
+            "duplicate": not changed,
+            "attribution": attribution,
+            "evolution": self.rsi.evolve(self.scope)
+            if changed
+            else {"status": "duplicate_feedback"},
+        }
+
+    def _task_result(self, args: TaskResultArgs) -> dict[str, Any]:
+        """保存真实任务结果, 与检索反馈分开存放."""
+        if self.rsi is None:
+            raise ValueError("task result requires persistent memory")
+        return self.rsi.record_task_result(
+            self.scope,
+            args.task_id,
+            args.trace_id,
+            args.outcome,
+            tests_passed=args.tests_passed,
+            files_changed=args.files_changed,
+            tokens=args.tokens,
+            latency_ms=args.latency_ms,
+            detail=args.detail,
+        )
+
     @staticmethod
     def _tool_error(request: JsonRpcRequest, message: str) -> dict[str, Any]:
         """返回 MCP 工具级错误。"""
@@ -158,58 +262,16 @@ class CodingMemoryMCPServer:
 
     async def run_stdio(self, stdin: TextIO, stdout: TextIO) -> None:
         """跨 Windows 与 POSIX 读取行式 stdio JSON-RPC。"""
-        loop = asyncio.get_running_loop()
-        queue: asyncio.Queue[str | None] = asyncio.Queue()
+        from dmsa.mcp_server.coding_stdio import serve
 
-        def pump() -> None:
-            try:
-                for line in stdin:
-                    loop.call_soon_threadsafe(queue.put_nowait, line)
-            finally:
-                loop.call_soon_threadsafe(queue.put_nowait, None)
-
-        threading.Thread(target=pump, daemon=True, name="dmsa-coding-mcp-stdin").start()
-        while (line := await queue.get()) is not None:
-            try:
-                response = await self.handle(parse_request(line))
-            except Exception as exc:
-                response = make_error_response(
-                    JsonRpcErrorCode.INVALID_REQUEST.value, str(exc)
-                )
-            if response is not None:
-                stdout.write(json.dumps(response, ensure_ascii=False) + "\n")
-                stdout.flush()
+        await serve(self, stdin, stdout)
 
 
 def main() -> int:
     """以 MCP stdio 模式运行项目级 CodingMemory。"""
-    if hasattr(sys.stdin, "reconfigure"):
-        sys.stdin.reconfigure(encoding="utf-8")
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8")
-    raw_path = os.environ.get("DMSA_CODING_MEMORY_PATH", "~/.dmsa/coding-memory.sqlite")
-    path = Path(raw_path).expanduser()
-    scope = os.environ.get("DMSA_CODING_MEMORY_SCOPE", Path.cwd().name)
-    from dmsa.mcp_server.remote_memory import configured_remote
+    from dmsa.mcp_server.coding_stdio import run_server
 
-    remote = configured_remote(scope)
-    if remote is not None:
-        try:
-            asyncio.run(remote.run_stdio(sys.stdin, sys.stdout))
-        finally:
-            remote.close()
-        return 0
-    if str(path) != ":memory:":
-        path.parent.mkdir(parents=True, exist_ok=True)
-    memory = CodingMemory(path)
-    server = CodingMemoryMCPServer(memory, scope, path)
-    try:
-        asyncio.run(server.run_stdio(sys.stdin, sys.stdout))
-    except KeyboardInterrupt:
-        return 0
-    finally:
-        memory.close()
-    return 0
+    return run_server()
 
 
 if __name__ == "__main__":

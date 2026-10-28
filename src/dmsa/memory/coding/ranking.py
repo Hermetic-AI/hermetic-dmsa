@@ -50,10 +50,45 @@ _FAILED_ATTEMPT_RE = re.compile(
 )
 _STOPWORDS = frozenset(
     (
-        "the", "and", "for", "with", "this", "that", "from", "into", "not", "are",
-        "was", "has", "have", "is", "as", "of", "to", "in", "on", "by", "or", "it",
-        "its", "be", "when", "what", "which", "who", "how", "why", "all", "any",
-        "can", "could", "should", "would", "does", "did", "do",
+        "the",
+        "and",
+        "for",
+        "with",
+        "this",
+        "that",
+        "from",
+        "into",
+        "not",
+        "are",
+        "was",
+        "has",
+        "have",
+        "is",
+        "as",
+        "of",
+        "to",
+        "in",
+        "on",
+        "by",
+        "or",
+        "it",
+        "its",
+        "be",
+        "when",
+        "what",
+        "which",
+        "who",
+        "how",
+        "why",
+        "all",
+        "any",
+        "can",
+        "could",
+        "should",
+        "would",
+        "does",
+        "did",
+        "do",
     )
 )
 _CJK_CHAR_RE = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]")
@@ -93,9 +128,7 @@ def query_features(query: str) -> QueryFeatures:
     """预计算查询短语与标识符特征, 避免逐条证据重复解析."""
     raw_words = _WORD_RE.findall(query)
     words = [word.lower() for word in raw_words]
-    phrases = {
-        " ".join(words[index : index + 3]) for index in range(max(0, len(words) - 2))
-    }
+    phrases = {" ".join(words[index : index + 3]) for index in range(max(0, len(words) - 2))}
     identifiers: set[str] = set()
     paths: set[str] = set()
     for word in raw_words:
@@ -158,9 +191,7 @@ def _symbol_keyword_hits(features: QueryFeatures, symbols: str) -> int:
     """查询关键词命中证据符号片段的数量, 用于把函数级证据排到散文之上."""
     parts: set[str] = set()
     for symbol in symbols.split():
-        parts.update(
-            part for part in re.split(r"[^a-z0-9]+", symbol.lower()) if len(part) >= 3
-        )
+        parts.update(part for part in re.split(r"[^a-z0-9]+", symbol.lower()) if len(part) >= 3)
     if not parts:
         return 0
     return sum(1 for word in features.keywords if any(part.startswith(word) for part in parts))

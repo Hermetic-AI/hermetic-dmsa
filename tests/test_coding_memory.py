@@ -121,12 +121,15 @@ def test_independent_writers_serialize_revision_assignment(tmp_path) -> None:
     path = tmp_path / "writers.db"
     first, second = CodingMemory(path, None), CodingMemory(path, None)
     with ThreadPoolExecutor(max_workers=2) as pool:
-        revisions = list(pool.map(
-            lambda args: args[0].add(args[1], "u", "s", [SourceMessage("user", args[1])]),
-            [(first, "a"), (second, "b")],
-        ))
+        revisions = list(
+            pool.map(
+                lambda args: args[0].add(args[1], "u", "s", [SourceMessage("user", args[1])]),
+                [(first, "a"), (second, "b")],
+            )
+        )
     assert sorted(revisions) == [1, 2]
-    assert first.add("a", "u", "s", [SourceMessage("user", "a")]) == 1
+    # 并发胜者不确定, 幂等性只要求重试拿回自己那条 revision.
+    assert first.add("a", "u", "s", [SourceMessage("user", "a")]) == revisions[0]
     assert first.store.revision("u") == 2
     first.close()
     second.close()
@@ -151,7 +154,7 @@ def test_negated_test_success_remains_unknown() -> None:
 
 def test_assistant_outcome_labels_follow_explicit_claims() -> None:
     """assistant 的显式通过/失败文本也进入结果标签, 仅表示来源声称."""
-    success = extract((SourceMessage("assistant", "验证：pytest 全部通过。"),))[0]  # noqa: RUF001
+    success = extract((SourceMessage("assistant", "验证：pytest 全部通过。"),))[0]
     assert success.outcome == "reported_success"
     failed = extract((SourceMessage("assistant", "旧会话尝试未通过验证。"),))[0]
     assert failed.outcome == "observed_failure"
@@ -357,8 +360,7 @@ def test_legacy_unicode61_database_migrates_to_trigram(tmp_path) -> None:
     memory.add("r2", "u", "s2", [SourceMessage("assistant", "把中文编码过程写进记忆库")])
     memory.store.db.execute("PRAGMA writable_schema=ON")
     memory.store.db.execute(
-        "UPDATE sqlite_master SET sql=replace(sql, 'trigram', 'unicode61') "
-        "WHERE name='chunk_fts'"
+        "UPDATE sqlite_master SET sql=replace(sql, 'trigram', 'unicode61') WHERE name='chunk_fts'"
     )
     memory.store.db.commit()
     memory.close()

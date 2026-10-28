@@ -7,14 +7,13 @@ from __future__ import annotations
 
 import time
 import uuid
+from collections.abc import Iterator
 from contextvars import ContextVar
 from dataclasses import dataclass, field
-from typing import Any, Iterator
+from typing import Any
 
 # 当前活跃 span（ContextVar 跨 async task 自动隔离）
-_current_span: ContextVar["TraceSpan | None"] = ContextVar(
-    "dmsa_current_span", default=None
-)
+_current_span: ContextVar[TraceSpan | None] = ContextVar("dmsa_current_span", default=None)
 
 
 @dataclass
@@ -36,7 +35,7 @@ class TraceSpan:
     start_time: float
     end_time: float | None = None
     attributes: dict[str, Any] = field(default_factory=dict)
-    _children: list["TraceSpan"] = field(default_factory=list, repr=False)
+    _children: list[TraceSpan] = field(default_factory=list, repr=False)
 
     def set_attribute(self, key: str, value: Any) -> None:
         """设置 span 属性。"""
@@ -70,12 +69,14 @@ class TraceSpanContext:
     """``with`` 块形式的 span 上下文管理器。"""
 
     def __init__(self, name: str, **attributes: Any) -> None:
+        """初始化 span 上下文, 记录名称与初始属性。"""
         self._name = name
         self._attributes = attributes
         self._span: TraceSpan | None = None
         self._token: Any = None
 
     def __enter__(self) -> TraceSpan:
+        """进入 span, 创建并挂载到父 span。"""
         parent = get_current_span()
         self._span = TraceSpan(
             span_id=uuid.uuid4().hex,
@@ -90,6 +91,7 @@ class TraceSpanContext:
         return self._span
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        """退出 span, 标记异常并重置当前 span 上下文。"""
         if self._span is not None:
             if exc_type is not None:
                 self._span.set_attribute("error", repr(exc_val))
@@ -127,7 +129,7 @@ def _walk(span: TraceSpan) -> Iterator[TraceSpan]:
 __all__ = [
     "TraceSpan",
     "TraceSpanContext",
-    "start_span",
     "get_current_span",
     "iter_spans",
+    "start_span",
 ]

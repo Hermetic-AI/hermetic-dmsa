@@ -32,9 +32,7 @@ def test_http_selftest_solves_from_retrieved_evidence(tmp_path) -> None:
                 "request_id": f"rel-{index}",
                 "user_id": "selftest",
                 "session_id": f"rel-{index}",
-                "messages": [
-                    {"role": role, "content": content} for role, content in session
-                ],
+                "messages": [{"role": role, "content": content} for role, content in session],
             },
         )
         assert response.status_code == 200

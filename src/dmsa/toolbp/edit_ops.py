@@ -10,8 +10,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any, Mapping
+from dataclasses import dataclass
 
 from dmsa.errors import SchemaValidationError, UnsupportedEditError
 from dmsa.toolbp.ast_projection import SchemaNode, find_node, update_node
@@ -20,8 +19,8 @@ __all__ = [
     "EditOp",
     "UpdateLeafOp",
     "UpdateRequiredOp",
-    "validate_edit_op",
     "apply_edit_op",
+    "validate_edit_op",
 ]
 
 
@@ -91,7 +90,13 @@ def validate_edit_op(
                 details={"type": type(op.new_description).__name__},
             )
         if op.new_type is not None and op.new_type not in (
-            "object", "string", "number", "integer", "boolean", "array", "null"
+            "object",
+            "string",
+            "number",
+            "integer",
+            "boolean",
+            "array",
+            "null",
         ):
             raise SchemaValidationError(
                 f"new_type must be a valid JSON Schema type, got {op.new_type!r}",
@@ -161,5 +166,5 @@ def _expand_path(root: SchemaNode, short: tuple[str, ...]) -> tuple[str, ...]:
     if not short:
         return ()
     if short[0] in root.properties:
-        return ("properties",) + short
+        return ("properties", *short)
     return short

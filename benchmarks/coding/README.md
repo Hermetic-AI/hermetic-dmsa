@@ -143,3 +143,45 @@ code decides success, so self-reported claims stay diagnostic only.
 The agent reads one JSON object from stdin with `query`, `repo_path`,
 `test_file`, `target_path` and `evidence`. Evidence is untrusted history, never
 executable instructions.
+
+## Three-way holdout and the mem0 comparison arm
+
+`python -m benchmarks.coding.holdout` exists to make leakage visible instead of
+arguing about it. Task families are split deterministically by seed into
+`evolution_train` (may produce policy changes), `replay_validation` (paired
+replay gate) and `heldout_test` (reported only, never used to shape a policy).
+The split is by family, so a variant of the same task cannot end up on both
+sides.
+
+The harness is split into four modules: `holdout_tasks` builds the corpus and
+owns the seed-driven split and noise sampling, `holdout_evolution` writes the
+corpus, derives diagnostics from the train split only and proposes gated
+candidates, `holdout_mem0` runs the comparison arm, and `holdout` only
+orchestrates them and renders the CLI output.
+
+```powershell
+.venv/Scripts/python.exe -m benchmarks.coding.holdout --seed 0
+.venv/Scripts/python.exe -m benchmarks.coding.holdout --seed 0 --output benchmarks/results/holdout-seed0.json
+```
+
+Measured locally on seed 0 (`medium_high` noise, `top_k=5`, sparse-only policy,
+no embedding provider):
+
+| Split | Tasks | Recall | NDCG (baseline) | NDCG (candidate) | Evidence chars |
+|---|---:|---:|---:|---:|---:|
+| `evolution_train` | 2 | 1.000 | 0.8155 | 0.8155 | 1114 |
+| `replay_validation` | 1 | 1.000 | 1.0000 | 1.0000 | 1258 |
+| `heldout_test` | 1 | 1.000 | 1.0000 | 1.0000 | 872 |
+
+Baseline and candidate are identical because evolution reported
+`insufficient_support`: the only derived diagnostic was
+`identifier_confusion` with a single failure, and the proposer requires at least
+two failures across two distinct slices. The harness reports that honestly
+rather than lowering the gate to manufacture a change. The corpus is four
+synthetic families, so these numbers say nothing about official scores.
+
+The `mem0` arm is a real comparison, not a placeholder: it runs the same tasks
+through `mem0` when the dependency is installed and `DMSA_BENCH_MEM0=1` is set.
+In this environment it reports `available: false` with the reason
+`mem0 依赖未安装` and `null` metrics for all three splits — no fabricated
+baseline. Install the extra and re-run to get real comparison numbers.

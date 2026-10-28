@@ -1,0 +1,142 @@
+{
+  "schema_version": 1,
+  "evaluation_type": "synthetic_proxy_not_official",
+  "official_score": null,
+  "seed": 0,
+  "top_k": 5,
+  "noise_level": "medium_high",
+  "splits": {
+    "evolution_train": [
+      "bug-cache-race-001",
+      "anchor-parser-timeout"
+    ],
+    "replay_validation": [
+      "feature-parser-timeout-002"
+    ],
+    "heldout_test": [
+      "anchor-cache-race"
+    ]
+  },
+  "families": {
+    "ablation-anchor-parser-timeout": "evolution_train",
+    "feature-parser-timeout": "replay_validation",
+    "ablation-anchor-cache-race": "heldout_test",
+    "bug-cache-race": "evolution_train"
+  },
+  "baseline": {
+    "evolution_train": {
+      "task_count": 2,
+      "evidence_recall": 1.0,
+      "ndcg": 0.8154648767857288,
+      "misleading_memory_rate": 0.0,
+      "evidence_chars": 1114.0
+    },
+    "replay_validation": {
+      "task_count": 1,
+      "evidence_recall": 1.0,
+      "ndcg": 1.0,
+      "misleading_memory_rate": 0.0,
+      "evidence_chars": 1258.0
+    },
+    "heldout_test": {
+      "task_count": 1,
+      "evidence_recall": 1.0,
+      "ndcg": 1.0,
+      "misleading_memory_rate": 0.0,
+      "evidence_chars": 872.0
+    }
+  },
+  "candidate": {
+    "evolution_train": {
+      "task_count": 2,
+      "evidence_recall": 1.0,
+      "ndcg": 0.8154648767857288,
+      "misleading_memory_rate": 0.0,
+      "evidence_chars": 1114.0
+    },
+    "replay_validation": {
+      "task_count": 1,
+      "evidence_recall": 1.0,
+      "ndcg": 1.0,
+      "misleading_memory_rate": 0.0,
+      "evidence_chars": 1258.0
+    },
+    "heldout_test": {
+      "task_count": 1,
+      "evidence_recall": 1.0,
+      "ndcg": 1.0,
+      "misleading_memory_rate": 0.0,
+      "evidence_chars": 872.0
+    }
+  },
+  "evolution": {
+    "status": "insufficient_support",
+    "diagnostics": [
+      {
+        "kind": "identifier_confusion",
+        "failures": 1,
+        "success_counterexamples": 0
+      }
+    ],
+    "baseline": {
+      "exact_weight": 1.0,
+      "sparse_weight": 1.0,
+      "dense_weight": 0.0,
+      "experience_weight": 1.0,
+      "anchor_weight": 0.6,
+      "chunk_size": 1800,
+      "chunk_overlap": 160,
+      "stale_penalty": 0.01,
+      "skeleton_depth": 6,
+      "relation_window": 0,
+      "candidate_limit": 240,
+      "neighbor_window": 1,
+      "max_chars": 120000,
+      "per_session_limit": 16,
+      "redundancy_threshold": 0.93,
+      "dense_scan_limit": 10000,
+      "max_tokens": 32000,
+      "evidence_limit": 12,
+      "score_floor_ratio": 0.45,
+      "per_path_limit": 6,
+      "min_evidence": 4,
+      "trust_weight": 0.02,
+      "admission_similarity": 0.95
+    },
+    "candidate": {
+      "exact_weight": 1.0,
+      "sparse_weight": 1.0,
+      "dense_weight": 0.0,
+      "experience_weight": 1.0,
+      "anchor_weight": 0.6,
+      "chunk_size": 1800,
+      "chunk_overlap": 160,
+      "stale_penalty": 0.01,
+      "skeleton_depth": 6,
+      "relation_window": 0,
+      "candidate_limit": 240,
+      "neighbor_window": 1,
+      "max_chars": 120000,
+      "per_session_limit": 16,
+      "redundancy_threshold": 0.93,
+      "dense_scan_limit": 10000,
+      "max_tokens": 32000,
+      "evidence_limit": 12,
+      "score_floor_ratio": 0.45,
+      "per_path_limit": 6,
+      "min_evidence": 4,
+      "trust_weight": 0.02,
+      "admission_similarity": 0.95
+    }
+  },
+  "mem0": {
+    "available": false,
+    "reason": "mem0 依赖未安装",
+    "metrics": {
+      "evolution_train": null,
+      "replay_validation": null,
+      "heldout_test": null
+    }
+  },
+  "note": "自建合成任务的三分留出评测; 留出切分不参与策略产生, 也不代表官方成绩"
+}

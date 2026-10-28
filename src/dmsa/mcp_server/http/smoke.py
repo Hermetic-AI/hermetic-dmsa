@@ -1,4 +1,3 @@
-# ruff: noqa: RUF002
 """仅用标准库执行健康、写入及检索烟雾检查。."""
 
 from __future__ import annotations
@@ -64,12 +63,16 @@ def run_smoke(
                 "messages": [{"role": "user", "content": _CONTENT}],
             },
         )
-        if response != {
+        # 只校验必需字段: 响应可以增量携带 repo 等新键, 不允许缺失或改写既有契约
+        required = {
             "success": True,
             "request_id": request_id,
             "user_id": user_id,
             "session_id": request_id,
-        }:
+        }
+        if not isinstance(response, dict) or any(
+            response.get(key) != value for key, value in required.items()
+        ):
             raise TransportError("add contract failed")
     response = _request(
         base_url,

@@ -12,8 +12,8 @@ PMD skeleton 已提供 :class:`pmd.PromptContext`。本模块只做：
 from __future__ import annotations
 
 import time
-import uuid
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 from pmd import PromptContext as PMDPromptContext
 
@@ -22,9 +22,9 @@ from dmsa.errors import InvalidPromptContextError
 __all__ = [
     "PromptContext",
     "create_prompt_context",
-    "to_pmd",
     "from_pmd",
     "new_agent_id",
+    "to_pmd",
 ]
 
 
@@ -39,7 +39,6 @@ def _new_ulid() -> str:
     真正的 ULID 库是 ``python-ulid`` 或 ``ulid-py``，但保持零依赖我们用
     时间戳（10 字符 base32）+ 16 字符随机 base32 的拼接。
     """
-    import base64
     import os
     import struct
 
@@ -119,12 +118,12 @@ def create_prompt_context(
 
 
 def to_pmd(prompt_context: PMDPromptContext) -> PMDPromptContext:
-    """identity function（占位，供未来 Pydantic 转换用）。"""
+    """Identity function（占位，供未来 Pydantic 转换用）。"""
     return prompt_context
 
 
 def from_pmd(prompt_context: PMDPromptContext) -> PMDPromptContext:
-    """identity function（占位，供未来 Pydantic 转换用）。"""
+    """Identity function（占位，供未来 Pydantic 转换用）。"""
     return prompt_context
 
 

@@ -65,9 +65,7 @@ def test_evidence_adjustment_prefers_verified_patch_over_padded_attempt() -> Non
         "    return value\n"
         "```\n补充记录:" + "重复填充" * 80
     )
-    assert evidence_adjustment(features, verified) > evidence_adjustment(
-        features, padded_attempt
-    )
+    assert evidence_adjustment(features, verified) > evidence_adjustment(features, padded_attempt)
 
 
 def test_stale_write_detection_tolerates_leading_space() -> None:

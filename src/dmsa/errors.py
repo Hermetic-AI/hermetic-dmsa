@@ -75,6 +75,7 @@ class DMSAError(Exception):
         *,
         details: dict[str, Any] | None = None,
     ) -> None:
+        """初始化错误对象, 保存消息与结构化上下文。"""
         super().__init__(message)
         self.message = message
         self.details: dict[str, Any] = details or {}
@@ -88,6 +89,7 @@ class DMSAError(Exception):
         }
 
     def __repr__(self) -> str:
+        """返回含错误码与消息的可读表示。"""
         return f"{self.__class__.__name__}(code={self.code.value}, message={self.message!r})"
 
 
@@ -263,28 +265,28 @@ class IntegrationError(DMSAError):
 # ============================================================================
 
 __all__ = [
-    "ErrorCode",
-    "DMSAError",
+    "ClusteringFailedError",
     "ConfigError",
+    "DMSAError",
+    "EmbeddingFailedError",
+    "ErrorCode",
+    "FusionConflictError",
+    "GradientAggregationError",
+    "IntegrationError",
     "InvalidConfigValueError",
-    "SerializationError",
+    "InvalidPromptContextError",
+    "InvalidRequestError",
+    "InvalidSampleError",
+    "LineageNotFoundError",
+    "MCPServerError",
     "MemoryLayerError",
     "MissingParentError",
-    "LineageNotFoundError",
-    "InvalidPromptContextError",
-    "GradientAggregationError",
-    "EmbeddingFailedError",
-    "ClusteringFailedError",
-    "FusionConflictError",
-    "InvalidSampleError",
-    "ToolBPError",
-    "SchemaValidationError",
     "ProjectionRollbackError",
-    "UnsupportedEditError",
+    "SchemaValidationError",
+    "SerializationError",
+    "ToolBPError",
     "ToolCallError",
-    "MCPServerError",
-    "InvalidRequestError",
     "ToolNotFoundError",
     "TransportError",
-    "IntegrationError",
+    "UnsupportedEditError",
 ]

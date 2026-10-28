@@ -35,6 +35,7 @@ class Counter:
         return self._value
 
     def to_dict(self) -> dict[str, Any]:
+        """导出计数器为 dict。"""
         return {
             "type": "counter",
             "name": self.name,
@@ -45,7 +46,16 @@ class Counter:
 
 # 默认 Histogram 桶（指数增长，覆盖 1ms-10s 范围）
 DEFAULT_BUCKETS: tuple[float, ...] = (
-    0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0, math.inf,
+    0.001,
+    0.005,
+    0.01,
+    0.05,
+    0.1,
+    0.5,
+    1.0,
+    5.0,
+    10.0,
+    math.inf,
 )
 
 
@@ -93,6 +103,7 @@ class MetricsRegistry:
     """全局 metrics 注册表。"""
 
     def __init__(self) -> None:
+        """初始化全局 metrics 注册表, 创建计数器和直方图容器。"""
         self._counters: dict[str, Counter] = {}
         self._histograms: dict[str, Histogram] = {}
         self._lock = threading.Lock()
@@ -113,9 +124,7 @@ class MetricsRegistry:
         """获取或创建 Histogram。"""
         with self._lock:
             if name not in self._histograms:
-                self._histograms[name] = Histogram(
-                    name=name, help=help, buckets=buckets
-                )
+                self._histograms[name] = Histogram(name=name, help=help, buckets=buckets)
             return self._histograms[name]
 
     def export(self) -> dict[str, list[dict[str, Any]]]:
@@ -143,10 +152,10 @@ def get_registry() -> MetricsRegistry:
 
 
 __all__ = [
+    "DEFAULT_BUCKETS",
     "Counter",
     "Histogram",
     "MetricsRegistry",
-    "DEFAULT_BUCKETS",
     "get_registry",
 ]
 

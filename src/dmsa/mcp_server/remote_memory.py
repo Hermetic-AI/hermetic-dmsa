@@ -1,4 +1,3 @@
-# ruff: noqa: D415, RUF002
 """把 CodingMemory MCP 工具桥接到统一 HTTP 记忆与 RSI 服务。"""
 
 from __future__ import annotations
@@ -9,7 +8,7 @@ from typing import Any
 
 import httpx
 
-from dmsa.mcp_server.coding_memory import TOOLS, CodingMemoryMCPServer
+from dmsa.mcp_server.coding_memory import CodingMemoryMCPServer
 from dmsa.mcp_server.protocol import JsonRpcRequest, make_response
 
 
@@ -20,43 +19,8 @@ class RemoteMemoryMCPServer(CodingMemoryMCPServer):
         """绑定私有 Compose 网络或本机服务及默认项目 scope。"""
         self.scope = scope
         self.client = httpx.Client(
-            trust_env=False,
-            base_url=url, headers={"Authorization": f"Bearer {key}"}, timeout=180
+            trust_env=False, base_url=url, headers={"Authorization": f"Bearer {key}"}, timeout=180
         )
-
-    async def handle(self, request: JsonRpcRequest) -> dict[str, Any] | None:
-        """在工具列表中增加与检索 trace 关联的反馈入口。"""
-        if request.method == "tools/list":
-            return make_response(
-                {
-                    "tools": [
-                        *TOOLS,
-                        {
-                            "name": "dmsa_coding_memory_feedback",
-                            "description": "反馈检索是否帮助任务并触发 DMSA RSI 回放门禁。",
-                            "inputSchema": {
-                                "type": "object",
-                                "properties": {
-                                    "trace_id": {"type": "string"},
-                                    "outcome": {"enum": ["success", "failure"]},
-                                    "kind": {
-                                        "enum": [
-                                            "unknown",
-                                            "exact_miss",
-                                            "redundancy",
-                                            "missing_context",
-                                        ]
-                                    },
-                                    "relevant_ids": {"type": "array", "items": {"type": "string"}},
-                                },
-                                "required": ["trace_id", "outcome"],
-                            },
-                        },
-                    ]
-                },
-                request.id,
-            )
-        return await super().handle(request)
 
     def _call(self, request: JsonRpcRequest) -> dict[str, Any]:
         """将 MCP 工具参数转换成受认证 HTTP 调用。"""
@@ -73,6 +37,8 @@ class RemoteMemoryMCPServer(CodingMemoryMCPServer):
                         "query": args.get("query"),
                         "top_k": args.get("top_k", 5),
                         "user_id": self.scope,
+                        "task_id": args.get("task_id"),
+                        "repo": args.get("repo", ""),
                     },
                 )
             elif name == "dmsa_coding_memory_record":
@@ -82,11 +48,14 @@ class RemoteMemoryMCPServer(CodingMemoryMCPServer):
                         "request_id": args.get("request_id"),
                         "session_id": args.get("session_id"),
                         "user_id": self.scope,
+                        "repo": args.get("repo", ""),
                         "messages": [{"role": "assistant", "content": args.get("content")}],
                     },
                 )
             elif name == "dmsa_coding_memory_feedback":
                 response = self.client.post("/feedback", json={**args, "user_id": self.scope})
+            elif name == "dmsa_coding_memory_task_result":
+                response = self.client.post("/task_result", json={**args, "user_id": self.scope})
             else:
                 return self._tool_error(request, "unknown tool")
             response.raise_for_status()

@@ -1,4 +1,3 @@
-# ruff: noqa: RUF002
 """HTTP embedding adapter ordering and validation tests."""
 
 from __future__ import annotations
@@ -16,13 +15,16 @@ from dmsa.mcp_server.http.embedding import QwenTextEmbedding, TextEmbeddingV4
 
 def test_text_embedding_v4_sorts_indices_and_forwards_dimension() -> None:
     """按响应 index 恢复输入顺序并转发向量维度。"""
+
     class Embeddings:
         def create(self, **kwargs: Any) -> Any:
             self.kwargs = kwargs
-            return SimpleNamespace(data=[
-                SimpleNamespace(index=1, embedding=[2.0, 2.0]),
-                SimpleNamespace(index=0, embedding=[1.0, 1.0]),
-            ])
+            return SimpleNamespace(
+                data=[
+                    SimpleNamespace(index=1, embedding=[2.0, 2.0]),
+                    SimpleNamespace(index=0, embedding=[1.0, 1.0]),
+                ]
+            )
 
     client = SimpleNamespace(embeddings=Embeddings())
     embedder = TextEmbeddingV4(client, dimension=2)
@@ -52,7 +54,9 @@ def test_qwen_adapter_uses_native_schema_and_query_document_types() -> None:
 
     client = httpx.Client(transport=httpx.MockTransport(respond))
     embedder = QwenTextEmbedding(
-        "https://embedding.example/api", "test-key", 256,
+        "https://embedding.example/api",
+        "test-key",
+        256,
         model="qwen3.7-text-embedding",
         client=client,
     )
@@ -76,9 +80,13 @@ def test_qwen_adapter_chunks_batches_to_provider_limit() -> None:
         batch_sizes.append(len(texts))
         return httpx.Response(
             200,
-            json={"output": {"embeddings": [
-                {"text_index": i, "embedding": [1.0] * 256} for i in range(len(texts))
-            ]}},
+            json={
+                "output": {
+                    "embeddings": [
+                        {"text_index": i, "embedding": [1.0] * 256} for i in range(len(texts))
+                    ]
+                }
+            },
         )
 
     client = httpx.Client(transport=httpx.MockTransport(respond))
@@ -90,9 +98,12 @@ def test_qwen_adapter_chunks_batches_to_provider_limit() -> None:
 
 @pytest.mark.parametrize(
     ("endpoint", "dimension"),
-    [("http://embedding.example/api", 1024), ("https://u:p@example/api", 1024),
-     ("https://embedding.example/api?token=secret", 1024),
-     ("https://embedding.example/api", 999)],
+    [
+        ("http://embedding.example/api", 1024),
+        ("https://u:p@example/api", 1024),
+        ("https://embedding.example/api?token=secret", 1024),
+        ("https://embedding.example/api", 999),
+    ],
 )
 def test_qwen_adapter_rejects_unsafe_or_invalid_configuration(
     endpoint: str, dimension: int

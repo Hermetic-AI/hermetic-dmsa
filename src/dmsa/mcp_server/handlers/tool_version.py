@@ -20,7 +20,7 @@ from dmsa.toolbp import (
 )
 from dmsa.types import ToolCallRecord
 
-__all__ = ["_handle_tool_call", "_handle_snapshot", "_register_handlers"]
+__all__ = ["_handle_snapshot", "_handle_tool_call", "_register_handlers"]
 
 _critic = ToolCallCritic()
 

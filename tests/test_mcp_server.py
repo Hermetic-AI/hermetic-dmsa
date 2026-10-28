@@ -81,9 +81,6 @@ def test_parse_request_params_must_be_object() -> None:
 
 def test_initialize_returns_server_info(server: MCPServer) -> None:
     """initialize 返回 server info + capabilities。"""
-    request = parse_request(
-        {"jsonrpc": "2.0", "method": "initialize", "params": {}, "id": 1}
-    )
     response = server.process_request_sync(
         {"jsonrpc": "2.0", "method": "initialize", "params": {}, "id": 1}
     )
@@ -538,9 +535,7 @@ def test_set_aggregator_injects_custom_fusion(server: MCPServer) -> None:
 
     original = feedback_module._aggregator
     try:
-        feedback_module.set_aggregator(
-            SGAAggregator(fusion=RuleBasedFusion())
-        )
+        feedback_module.set_aggregator(SGAAggregator(fusion=RuleBasedFusion()))
         node_id = _add_gradable_node(server, request_id=95)
         r = server.process_request_sync(
             {

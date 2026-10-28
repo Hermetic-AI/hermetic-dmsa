@@ -20,6 +20,7 @@ from benchmarks.coding.adapters import (  # noqa: E402
 )
 from benchmarks.coding.cli import _markdown  # noqa: E402
 from benchmarks.coding.dataset import load_manifest, ndcg  # noqa: E402
+from benchmarks.coding.effectiveness import paired_comparison, run_paired  # noqa: E402
 from benchmarks.coding.evaluator import evaluate_fixture  # noqa: E402
 
 
@@ -154,6 +155,10 @@ def test_openai_compatible_adapter_uses_environment_credential(monkeypatch) -> N
     class Handler(BaseHTTPRequestHandler):
         def do_POST(self) -> None:
             assert self.headers["Authorization"] == "Bearer test-secret"
+            # 必须读完请求体再回包, 否则关闭连接时残留未读数据会触发 RST, 客户端读响应偶发失败.
+            length = int(self.headers.get("Content-Length", "0"))
+            if length:
+                self.rfile.read(length)
             response = json.dumps(
                 {
                     "choices": [
@@ -210,3 +215,43 @@ def test_openai_adapter_fails_closed_without_credentials(monkeypatch) -> None:
             base_url="https://example.invalid/v1",
             api_key_env="MISSING_BENCH_KEY",
         )
+
+
+def test_paired_comparison_leaves_task_metrics_empty_without_agent() -> None:
+    """没有真实 Agent 时任务侧指标必须留空, 不能用检索指标冒充."""
+    manifest = load_manifest(ROOT / "benchmarks/coding/fixtures/mini.json")
+    report = evaluate_fixture(manifest, arms=["no_memory", "sparse"], seed=3)
+    paired = paired_comparison(report)
+    assert paired["paired_tasks"] == 0
+    assert paired["memory_on_test_pass_rate"] is None
+    assert paired["memory_off_test_pass_rate"] is None
+    assert paired["test_pass_rate_delta"] is None
+    assert paired["evidence_recall_on"] is not None
+    assert paired["evidence_recall_off"] is not None
+
+
+def test_paired_comparison_counts_memory_wins_over_no_memory() -> None:
+    """有证据才通过的 Agent 在配对对照里应体现为记忆侧净胜."""
+
+    def fake_agent(payload: dict) -> AgentResult:
+        passed = bool(payload["evidence"])
+        return AgentResult(True, passed, "src/a.py", 0, 0.01, 12, None)
+
+    manifest = load_manifest(ROOT / "benchmarks/coding/fixtures/mini.json")
+    report = evaluate_fixture(
+        manifest, arms=["no_memory", "sparse"], seed=5, agent=fake_agent, agent_name="probe"
+    )
+    paired = paired_comparison(report)
+    assert paired["paired_tasks"] > 0
+    assert paired["wins"] == paired["paired_tasks"]
+    assert paired["losses"] == 0
+    assert paired["test_pass_rate_delta"] == pytest.approx(1.0)
+    assert paired["memory_off_test_pass_rate"] == pytest.approx(0.0)
+
+
+def test_run_paired_reports_proxy_only_evaluation_type() -> None:
+    payload = run_paired(ROOT / "benchmarks/coding/fixtures/mini.json", seed=11)
+    assert payload["evaluation_type"] == "synthetic_proxy_not_official"
+    assert payload["official_score"] is None
+    assert payload["paired"]["paired_tasks"] == 0
+    json.dumps(payload)

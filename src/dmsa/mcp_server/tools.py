@@ -8,19 +8,20 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from dmsa.errors import DMSAError, ToolNotFoundError
 
 __all__ = [
     "DMSA_TOOLS",
     "TOOL_ADD_MEMORY",
-    "TOOL_QUERY_LINEAGE",
-    "TOOL_FEEDBACK",
     "TOOL_APPLY_GRADIENT",
-    "TOOL_TOOL_CALL",
-    "TOOL_SNAPSHOT",
+    "TOOL_FEEDBACK",
+    "TOOL_QUERY_LINEAGE",
     "TOOL_SEARCH",
+    "TOOL_SNAPSHOT",
+    "TOOL_TOOL_CALL",
 ]
 
 
@@ -58,7 +59,12 @@ TOOL_SCHEMAS: dict[str, dict[str, Any]] = {
                 "tags": {"type": "array", "items": {"type": "string"}, "default": []},
                 "importance": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.5},
                 "requires_grad": {"type": "boolean", "default": False},
-                "grad_learning_rate": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.0},
+                "grad_learning_rate": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "default": 0.0,
+                },
             },
             "required": ["content"],
         },
@@ -102,7 +108,11 @@ TOOL_SCHEMAS: dict[str, dict[str, Any]] = {
             "properties": {
                 "feedback_id": {"type": "string"},
                 "cluster_id": {"type": "integer"},
-                "target_type": {"type": "string", "enum": ["prompt", "schema"], "default": "prompt"},
+                "target_type": {
+                    "type": "string",
+                    "enum": ["prompt", "schema"],
+                    "default": "prompt",
+                },
                 "target_id": {"type": "string"},
             },
             "required": ["feedback_id", "cluster_id"],

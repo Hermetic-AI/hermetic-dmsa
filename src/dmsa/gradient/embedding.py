@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import hashlib
 import math
-from typing import Iterable, Protocol
+from collections.abc import Iterable
+from typing import Protocol
 
 
 class EmbedderProtocol(Protocol):
@@ -40,6 +41,7 @@ class HashEmbedder:
     dim: int
 
     def __init__(self, dim: int = 256) -> None:
+        """初始化哈希嵌入器, dim 决定输出向量长度。"""
         if dim <= 0:
             raise ValueError(f"dim must be positive, got {dim}")
         self.dim = dim
@@ -63,11 +65,13 @@ class HashEmbedder:
         return [self.embed(t) for t in texts]
 
 
-def cosine_similarity(a: list[float] | tuple[float, ...], b: list[float] | tuple[float, ...]) -> float:
+def cosine_similarity(
+    a: list[float] | tuple[float, ...], b: list[float] | tuple[float, ...]
+) -> float:
     """计算两个向量的余弦相似度。零依赖。"""
     if len(a) != len(b):
         raise ValueError(f"dimension mismatch: {len(a)} vs {len(b)}")
-    dot = sum(x * y for x, y in zip(a, b))
+    dot = sum(x * y for x, y in zip(a, b, strict=True))
     na = math.sqrt(sum(x * x for x in a))
     nb = math.sqrt(sum(y * y for y in b))
     if na == 0 or nb == 0:
@@ -75,7 +79,9 @@ def cosine_similarity(a: list[float] | tuple[float, ...], b: list[float] | tuple
     return dot / (na * nb)
 
 
-def cosine_distance(a: list[float] | tuple[float, ...], b: list[float] | tuple[float, ...]) -> float:
+def cosine_distance(
+    a: list[float] | tuple[float, ...], b: list[float] | tuple[float, ...]
+) -> float:
     """余弦距离 = 1 - 余弦相似度，范围 ``[0, 1]``。"""
     return 1.0 - cosine_similarity(a, b)
 
@@ -104,8 +110,8 @@ def vector_mean(vectors: Iterable[list[float] | tuple[float, ...]]) -> list[floa
 __all__ = [
     "EmbedderProtocol",
     "HashEmbedder",
-    "cosine_similarity",
     "cosine_distance",
+    "cosine_similarity",
     "normalize_vector",
     "vector_mean",
 ]

@@ -1,5 +1,5 @@
-# ruff: noqa: E501, RUF002
 """HTTP Coding Memory 协议测试。"""
+
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
@@ -19,14 +19,42 @@ def test_http_auth_add_search_and_idempotency(tmp_path) -> None:
     assert client.get("/health").status_code == 200
     assert client.post("/search", json={"query": "bug", "user_id": "u"}).status_code == 401
     headers = {"Authorization": "Bearer secret"}
-    payload = {"request_id": "opaque/id", "user_id": "u", "session_id": "s", "messages": [{"role": "user", "content": [{"type": "text", "text": "bug "}, {"type": "text", "text": "fixed"}]}]}
+    payload = {
+        "request_id": "opaque/id",
+        "user_id": "u",
+        "session_id": "s",
+        "messages": [
+            {
+                "role": "user",
+                "content": [{"type": "text", "text": "bug "}, {"type": "text", "text": "fixed"}],
+            }
+        ],
+    }
     reply = client.post("/add", json=payload, headers=headers)
     assert reply.status_code == 200
-    assert reply.json() == {"success": True, "request_id": "opaque/id", "user_id": "u", "session_id": "s"}
+    assert reply.json() == {
+        "success": True,
+        "request_id": "opaque/id",
+        "user_id": "u",
+        "session_id": "s",
+        "repo": "",
+    }
     assert client.post("/add", json=payload, headers=headers).status_code == 200
-    assert client.post("/search", json={"query": "bug", "user_id": "other", "top_k": 2}, headers=headers).json() == {"data": []}
-    assert client.post("/search", json={"query": "bug", "user_id": "u", "top_k": True}, headers=headers).status_code == 422
-    assert client.post("/search", json={"query": "bug", "user_id": "u", "options": ["dense"]}, headers=headers).status_code == 422
+    assert client.post(
+        "/search", json={"query": "bug", "user_id": "other", "top_k": 2}, headers=headers
+    ).json() == {"data": []}
+    assert (
+        client.post(
+            "/search", json={"query": "bug", "user_id": "u", "top_k": True}, headers=headers
+        ).status_code
+        == 422
+    )
+    assert (
+        client.post(
+            "/search", json={"query": "bug", "user_id": "u", "options": ["dense"]}, headers=headers
+        ).status_code
+        == 422
+    )
     memory.close()
 
 
@@ -35,7 +63,12 @@ def test_http_conflict_and_token_auth(tmp_path) -> None:
     memory = CodingMemory(tmp_path / "conflict.sqlite", None)
     client = TestClient(create_app(memory, "k"))
     headers = {"Authorization": "Token k"}
-    base = {"request_id": "r", "user_id": "u", "session_id": "s", "messages": [{"role": "assistant", "content": "one"}]}
+    base = {
+        "request_id": "r",
+        "user_id": "u",
+        "session_id": "s",
+        "messages": [{"role": "assistant", "content": "one"}],
+    }
     assert client.post("/add", json=base, headers=headers).status_code == 200
     base["messages"] = [{"role": "assistant", "content": "two"}]
     assert client.post("/add", json=base, headers=headers).status_code == 409
@@ -58,11 +91,17 @@ def test_http_restart_concurrency_and_sanitized_body(tmp_path) -> None:
         "messages": [{"role": "user", "content": "durable deployment clue"}],
     }
     with ThreadPoolExecutor(max_workers=4) as pool:
-        replies = list(pool.map(lambda _: client.post("/add", json=payload, headers=headers).status_code, range(8)))
+        replies = list(
+            pool.map(
+                lambda _: client.post("/add", json=payload, headers=headers).status_code, range(8)
+            )
+        )
     assert replies == [200] * 8
     memory.close()
     reopened = CodingMemory(path, policy=SearchPolicy(dense_weight=0.0))
-    response = TestClient(create_app(reopened, "key-1")).post("/search", json={"query": "deployment", "user_id": "u1", "top_k": 1}, headers=headers)
+    response = TestClient(create_app(reopened, "key-1")).post(
+        "/search", json={"query": "deployment", "user_id": "u1", "top_k": 1}, headers=headers
+    )
     assert response.json()["data"]
     reopened.close()
 
@@ -73,9 +112,12 @@ def test_http_rejects_nontext_content_parts_without_echo(tmp_path) -> None:
     client = TestClient(create_app(memory, "key"))
     response = client.post(
         "/add",
-        json={"request_id": "r", "user_id": "u", "session_id": "s", "messages": [
-            {"role": "user", "content": [{"type": "image", "text": "private"}]}
-        ]},
+        json={
+            "request_id": "r",
+            "user_id": "u",
+            "session_id": "s",
+            "messages": [{"role": "user", "content": [{"type": "image", "text": "private"}]}],
+        },
         headers={"X-Api-Key": "key"},
     )
     assert response.status_code == 422
@@ -86,6 +128,7 @@ def test_http_rejects_nontext_content_parts_without_echo(tmp_path) -> None:
 
 def test_http_auth_non_ascii_config_and_surfaces_provider_failure(tmp_path) -> None:
     """非 ASCII 配置密钥不触发比较异常, dense provider 故障返回通用 503。"""
+
     class BrokenEmbedder:
         dimension = 2
         fingerprint = "broken"
@@ -96,14 +139,20 @@ def test_http_auth_non_ascii_config_and_surfaces_provider_failure(tmp_path) -> N
     memory = CodingMemory(tmp_path / "provider.sqlite", BrokenEmbedder())
     client = TestClient(create_app(memory, "key"))
     unicode_client = TestClient(create_app(memory, "密钥"))
-    assert unicode_client.post(
-        "/search", json={"query": "x", "user_id": "u"}, headers={"X-Api-Key": "ascii"}
-    ).status_code == 401
+    assert (
+        unicode_client.post(
+            "/search", json={"query": "x", "user_id": "u"}, headers={"X-Api-Key": "ascii"}
+        ).status_code
+        == 401
+    )
     response = client.post(
         "/add",
-        json={"request_id": "r", "user_id": "u", "session_id": "s", "messages": [
-            {"role": "user", "content": "source"}
-        ]},
+        json={
+            "request_id": "r",
+            "user_id": "u",
+            "session_id": "s",
+            "messages": [{"role": "user", "content": "source"}],
+        },
         headers={"X-Api-Key": "key"},
     )
     assert response.status_code == 503
@@ -116,6 +165,3 @@ def test_cli_validates_key_before_server_start(monkeypatch) -> None:
     monkeypatch.delenv("DMSA_MEMORY_API_KEY", raising=False)
     with pytest.raises(SystemExit, match="DMSA_MEMORY_API_KEY"):
         cli.main(["--profile", "sparse-dev"])
-
-
-

@@ -29,7 +29,7 @@ def test_counter_increments() -> None:
 def test_counter_cannot_decrement() -> None:
     """Counter 不允许负数。"""
     c = Counter("test")
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="cannot be decremented"):
         c.inc(-1.0)
 
 
@@ -101,6 +101,5 @@ def test_trace_span_lifecycle() -> None:
 
 def test_trace_span_nesting() -> None:
     """嵌套 span 形成父子关系。"""
-    with start_span("parent") as parent:
-        with start_span("child") as child:
-            assert child.parent_id == parent.span_id
+    with start_span("parent") as parent, start_span("child") as child:
+        assert child.parent_id == parent.span_id

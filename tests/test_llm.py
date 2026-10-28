@@ -35,9 +35,7 @@ class _FakeEmbeddings:
         self.calls.append((model, list(input)))
         if self.fail:
             raise RuntimeError("api down")
-        return SimpleNamespace(
-            data=[SimpleNamespace(embedding=[0.1] * self.dim) for _ in input]
-        )
+        return SimpleNamespace(data=[SimpleNamespace(embedding=[0.1] * self.dim) for _ in input])
 
 
 class _FakeCompletions:

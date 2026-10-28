@@ -9,16 +9,27 @@ import threading
 from collections.abc import Iterable
 from pathlib import Path
 
+from dmsa.memory.coding.anchor_store import (
+    anchor_candidates,
+    anchors_by_ids,
+    relation_neighbors,
+)
+from dmsa.memory.coding.code_anchors import CodeAnchor
 from dmsa.memory.coding.extraction import Chunk
 from dmsa.memory.coding.ids import chunk_id, message_id
-from dmsa.memory.coding.models import (
-    CodingMemoryConflictError,
-    CorpusState,
-    SourceMessage,
-)
+from dmsa.memory.coding.models import CodingMemoryConflictError, CorpusState, SourceMessage
 from dmsa.memory.coding.schema import initialize
-from dmsa.memory.coding.storage_queries import neighbors, sparse_candidates, substring_candidates
+from dmsa.memory.coding.snapshot import RepoSnapshot
+from dmsa.memory.coding.snapshot_store import load_snapshot, save_snapshot
+from dmsa.memory.coding.storage_queries import (
+    exact_candidates,
+    neighbors,
+    scope_partitions,
+    sparse_candidates,
+    substring_candidates,
+)
 from dmsa.memory.coding.storage_write import publish_request
+from dmsa.memory.coding.temporal import AsOf, as_of_filter
 
 
 class CodingStore:
@@ -79,8 +90,15 @@ class CodingStore:
         chunks: Iterable[Chunk],
         vectors: list[tuple[float, ...]],
         fingerprint: str | None,
+        *,
+        author: str = "",
+        rival: tuple[str, float] | None = None,
     ) -> int:
-        """事务性发布 request、原文、切片、向量和 revision."""
+        """事务性发布 request、原文、切片、向量和 revision.
+
+        ``author`` 记录写入者, ``rival`` 是门控判定的对手切片, 两者都只在
+        团队场景下生效, 个人作用域写入保持原样.
+        """
         digest = self.payload_hash(session_id, messages)
         with self.lock, self.db:
             self.db.execute("BEGIN IMMEDIATE")
@@ -94,65 +112,86 @@ class CodingStore:
                 chunks,
                 vectors,
                 fingerprint,
+                author=author,
+                rival=rival,
             )
 
     def sparse_candidates(
-        self, terms: tuple[str, ...], user_id: str, limit: int
+        self,
+        terms: tuple[str, ...],
+        user_id: str,
+        limit: int,
+        as_of: AsOf | None = None,
     ) -> list[sqlite3.Row]:
         """按 scope 在 FTS 虚表检索预展开词项."""
-        return sparse_candidates(self.db, terms, user_id, limit)
+        return sparse_candidates(self.db, terms, user_id, limit, as_of)
 
     def substring_candidates(
-        self, terms: tuple[str, ...], user_id: str, limit: int
+        self,
+        terms: tuple[str, ...],
+        user_id: str,
+        limit: int,
+        as_of: AsOf | None = None,
     ) -> list[sqlite3.Row]:
         """按 scope 用 LIKE 召回短于 trigram 窗口的词项."""
-        return substring_candidates(self.db, terms, user_id, limit)
+        return substring_candidates(self.db, terms, user_id, limit, as_of)
 
     def exact_candidates(
-        self, terms: tuple[str, ...], user_id: str, limit: int
+        self,
+        terms: tuple[str, ...],
+        user_id: str,
+        limit: int,
+        as_of: AsOf | None = None,
     ) -> list[sqlite3.Row]:
         """从 scope-filtered SQL 精确索引查路径与符号."""
-        values = tuple(term for term in terms if len(term) > 2)
-        if not values:
-            return []
-        placeholders = ",".join("?" for _ in values)
-        return list(
-            self.db.execute(
-                "SELECT c.*, COUNT(*) AS match_hits FROM exact_terms e "
-                "JOIN chunks c ON c.id=e.chunk_id "
-                "WHERE e.user_id=? AND c.user_id=? AND e.term IN (" + placeholders + ") "
-                "GROUP BY c.id ORDER BY match_hits DESC, c.id LIMIT ?",
-                (user_id, user_id, *(term.lower() for term in values), limit),
-            )
-        )
+        return exact_candidates(self.db, terms, user_id, limit, as_of)
 
-    def dense_candidates(
-        self, user_id: str, fingerprint: str, limit: int
-    ) -> tuple[int, list[tuple[sqlite3.Row, tuple[float, ...]]]]:
-        """读取有界同 scope 持久向量候选."""
-        count = int(
-            self.db.execute("SELECT count(*) FROM chunks WHERE user_id=?", (user_id,)).fetchone()[0]
-        )
-        if count > limit:
-            return count, []
-        rows = self.db.execute(
-            "SELECT c.*, v.vector FROM chunks c JOIN vectors v ON c.id=v.chunk_id "
-            "WHERE c.user_id=? AND v.user_id=? AND v.fingerprint=?",
-            (user_id, user_id, fingerprint),
-        )
-        return count, [(r, tuple(json.loads(r["vector"]))) for r in rows]
+    def save_snapshot(self, user_id: str, snapshot: RepoSnapshot) -> None:
+        """保存 scope 的仓库符号快照, 同一 root 覆盖旧版本."""
+        with self.lock, self.db:
+            save_snapshot(self.db, user_id, snapshot)
 
-    def rows_by_ids(self, user_id: str, ids: tuple[str, ...]) -> list[sqlite3.Row]:
-        """按同 scope 稳定 ID 读取已召回证据."""
+    def load_snapshot(self, user_id: str) -> RepoSnapshot | None:
+        """读取 scope 最近一次仓库快照; 没有快照时返回 None."""
+        with self.lock:
+            return load_snapshot(self.db, user_id)
+
+    def relation_neighbors(
+        self, user_id: str, chunk_id: str, limit: int, as_of: AsOf | None = None
+    ) -> tuple[str, ...]:
+        """读取与切片共享工程关系目标的其它切片."""
+        return relation_neighbors(self.db, user_id, chunk_id, limit, as_of)
+
+    def anchor_candidates(
+        self,
+        terms: tuple[str, ...],
+        user_id: str,
+        limit: int,
+        as_of: AsOf | None = None,
+    ) -> list[sqlite3.Row]:
+        """按 scope 召回代码锚点命中的切片."""
+        return anchor_candidates(self.db, terms, user_id, limit, as_of)
+
+    def anchors_by_ids(
+        self, user_id: str, chunk_ids: Iterable[str]
+    ) -> dict[str, tuple[CodeAnchor, ...]]:
+        """按切片 ID 读取锚点, 供证据包渲染结构化定位信息."""
+        return anchors_by_ids(self.db, user_id, chunk_ids)
+
+    def rows_by_ids(
+        self, user_id: str, ids: tuple[str, ...], as_of: AsOf | None = None
+    ) -> list[sqlite3.Row]:
+        """按同 scope 稳定 ID 读取已召回证据; 可按时序坐标收敛."""
         if not ids:
             return []
         placeholders = ",".join("?" for _ in ids)
+        clause, window = as_of_filter("c", as_of)
         return list(
             self.db.execute(
                 "SELECT c.*, COALESCE(m.ordinal, c.ordinal) AS message_index FROM chunks c "
                 "LEFT JOIN messages m ON m.id=c.message_id "
-                f"WHERE c.user_id=? AND c.id IN ({placeholders})",
-                (user_id, *ids),
+                f"WHERE c.user_id=? AND c.id IN ({placeholders})" + clause,
+                (user_id, *ids, *window),
             )
         )
 
@@ -175,6 +214,10 @@ class CodingStore:
             "SELECT epoch FROM scope_epochs WHERE user_id=?", (user_id,)
         ).fetchone()
         return int(row[0]) if row else 0
+
+    def sub_scopes(self, user_id: str) -> tuple[str, ...]:
+        """返回该 scope 及其仓库子域清单, 用于按用户完整清理."""
+        return scope_partitions(self.db, user_id)
 
     def corpus_state(self, user_ids: Iterable[str]) -> CorpusState:
         """用一个只读事务读取指定 scope revisions 快照."""
@@ -212,7 +255,21 @@ class CodingStore:
             self.db.execute("BEGIN IMMEDIATE")
             current = self.revision(user_id)
             epoch = current + 1
-            for table in ("chunks", "vectors", "exact_terms", "messages", "requests", "corpus"):
+            for table in (
+                "chunks",
+                "vectors",
+                "exact_terms",
+                "code_anchors",
+                "code_relations",
+                "repo_snapshots",
+                "procedures",
+                "procedure_terms",
+                "write_authors",
+                "write_conflicts",
+                "messages",
+                "requests",
+                "corpus",
+            ):
                 self.db.execute(f"DELETE FROM {table} WHERE user_id=?", (user_id,))
             self.db.execute(
                 "INSERT INTO scope_epochs VALUES(?,?) ON CONFLICT(user_id) "

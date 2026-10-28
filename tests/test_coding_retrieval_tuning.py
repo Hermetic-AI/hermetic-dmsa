@@ -118,9 +118,7 @@ def test_exact_channel_orders_by_match_count(tmp_path) -> None:
             SourceMessage("assistant", "alpha_value only"),
         ],
     )
-    policy = SearchPolicy(
-        exact_weight=1, sparse_weight=0, experience_weight=0, candidate_limit=1
-    )
+    policy = SearchPolicy(exact_weight=1, sparse_weight=0, experience_weight=0, candidate_limit=1)
     hits = memory.search("alpha_value beta_gamma", "u", 1, policy)
     assert len(hits) == 1
     assert "beta_gamma" in hits[0].content
@@ -139,9 +137,7 @@ def test_substring_channel_orders_by_match_count(tmp_path) -> None:
             SourceMessage("assistant", "db only"),
         ],
     )
-    policy = SearchPolicy(
-        exact_weight=0, sparse_weight=1, experience_weight=0, candidate_limit=1
-    )
+    policy = SearchPolicy(exact_weight=0, sparse_weight=1, experience_weight=0, candidate_limit=1)
     hits = memory.search("db io", "u", 1, policy)
     assert len(hits) == 1
     assert "io" in hits[0].content

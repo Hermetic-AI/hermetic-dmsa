@@ -13,11 +13,11 @@ PMD skeleton 已提供 MemoryNode / CreatorEdge 的 to_dict()。本模块做：
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, cast
 
 from dmsa.errors import SerializationError
 
-__all__ = ["to_dict", "from_dict", "to_json_string", "from_json_string"]
+__all__ = ["from_dict", "from_json_string", "to_dict", "to_json_string"]
 
 
 def to_dict(memory_layer: Any) -> dict[str, Any]:
@@ -34,7 +34,7 @@ def to_dict(memory_layer: Any) -> dict[str, Any]:
     """
     try:
         # 委托给 MemoryLayer 自己（避免循环 import）
-        return memory_layer.export_state()
+        return cast(dict[str, Any], memory_layer.export_state())
     except Exception as exc:
         raise SerializationError(
             f"failed to serialize MemoryLayer: {exc}",

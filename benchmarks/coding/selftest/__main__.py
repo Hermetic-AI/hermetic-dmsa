@@ -15,19 +15,17 @@ def main(argv: list[str] | None = None) -> int:
     """解析参数、运行闭环并按需在退化时返回非零退出码."""
     parser = argparse.ArgumentParser(prog="python -m benchmarks.coding.selftest")
     parser.add_argument("--seed", type=int, default=17)
-    parser.add_argument("--arms", nargs="+", choices=("baseline", "tuned"),
-                        default=["baseline", "tuned"])
-    parser.add_argument("--levels", nargs="+", choices=NOISE_LEVELS,
-                        default=list(NOISE_LEVELS))
+    parser.add_argument(
+        "--arms", nargs="+", choices=("baseline", "tuned"), default=["baseline", "tuned"]
+    )
+    parser.add_argument("--levels", nargs="+", choices=NOISE_LEVELS, default=list(NOISE_LEVELS))
     parser.add_argument("--attempts", type=int, default=10)
     parser.add_argument("--out", default="benchmarks/results/coding-selftest.json")
     parser.add_argument(
         "--history",
         choices=HISTORY_MODES,
         default="case",
-        help=(
-            "case: 历史含标准答案; analogy: 历史是同族异标识符的已解任务; none: 无历史对照"
-        ),
+        help=("case: 历史含标准答案; analogy: 历史是同族异标识符的已解任务; none: 无历史对照"),
     )
     parser.add_argument(
         "--agent-argv",

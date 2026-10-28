@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 from dmsa.types import ToolCallRecord, ToolSchemaNode
 
-__all__ = ["ToolSchemaNode", "ToolCallRecord", "make_schema_node", "make_call_record"]
+__all__ = ["ToolCallRecord", "ToolSchemaNode", "make_call_record", "make_schema_node"]
 
 
 def make_schema_node(

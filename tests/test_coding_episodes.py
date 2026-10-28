@@ -1,4 +1,3 @@
-# ruff: noqa: RUF001
 """session 级经验卡的构建、入库与检索行为."""
 
 from __future__ import annotations

@@ -94,9 +94,7 @@ class SystemOneDecisionClient:
         except Exception as exc:
             error_response = getattr(exc, "response", None)
             http_status = (
-                error_response.status_code
-                if error_response is not None
-                else locals().get("status")
+                error_response.status_code if error_response is not None else locals().get("status")
             )
             _observe(
                 observer,
@@ -125,9 +123,7 @@ class SystemOneDecisionClient:
         self.api_key = ""
 
 
-def _observe(
-    observer: Callable[[dict[str, Any]], None] | None, event: dict[str, Any]
-) -> None:
+def _observe(observer: Callable[[dict[str, Any]], None] | None, event: dict[str, Any]) -> None:
     """报告去敏后的模型调用事件, 观察器异常不能影响提案逻辑."""
     if observer is not None:
         with suppress(Exception):

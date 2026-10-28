@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import tempfile
-from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -12,11 +10,9 @@ from dmsa.config import DMSAConfig, EmbedderConfig, GradientConfig, MCPServerCon
 
 
 @pytest.fixture
-def tmp_storage_path(tmp_path: Path) -> Iterator[str]:
-    """临时 SQLite 存储路径。"""
-    path = tmp_path / "test_dmsa.sqlite"
-    yield str(path)
-    # cleanup：pytest tmp_path 自动清理
+def tmp_storage_path(tmp_path: Path) -> str:
+    """临时 SQLite 存储路径（由 pytest tmp_path 自动清理）。"""
+    return str(tmp_path / "test_dmsa.sqlite")
 
 
 @pytest.fixture

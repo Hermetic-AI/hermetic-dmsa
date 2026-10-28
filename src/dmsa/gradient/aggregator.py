@@ -11,19 +11,19 @@
 
 from __future__ import annotations
 
-from typing import Iterable
+from collections.abc import Iterable
 
 from dmsa.errors import EmbeddingFailedError, GradientAggregationError
 from dmsa.gradient.clustering import (
+    OUTLIER_CLUSTER_ID,
     ClusteringBackend,
     FallbackSingleLinkBackend,
-    OUTLIER_CLUSTER_ID,
 )
 from dmsa.gradient.embedding import EmbedderProtocol, HashEmbedder
 from dmsa.gradient.fusion import FusionClient, StaticFusion
 from dmsa.gradient.routing import (
-    ConflictDetector,
     ConditionalBranchSynthesizer,
+    ConflictDetector,
 )
 from dmsa.observability import get_logger, get_registry, start_span
 from dmsa.types import (
@@ -61,6 +61,7 @@ class SGAAggregator:
         branch_synthesizer: ConditionalBranchSynthesizer | None = None,
         max_samples: int = 10_000,
     ) -> None:
+        """初始化聚合器, 各依赖缺省时回落到内置实现。"""
         if max_samples <= 0:
             raise ValueError(f"max_samples must be positive, got {max_samples}")
         self._embedder: EmbedderProtocol = embedder or HashEmbedder()
@@ -131,9 +132,7 @@ class SGAAggregator:
             }
             conflicts = self._conflict_detector.detect(fused_list, samples_by_cluster)
             fused_by_id = {f.cluster_id: f for f in fused_list}
-            branches_by_cluster = self._branch_synthesizer.synthesize_all(
-                conflicts, fused_by_id
-            )
+            branches_by_cluster = self._branch_synthesizer.synthesize_all(conflicts, fused_by_id)
             # annotate fused with branches / has_conflict
             annotated: list[FusedGradient] = []
             for f in fused_list:
@@ -165,9 +164,7 @@ class SGAAggregator:
                 applied_to=(),
             )
 
-    def _embed_samples(
-        self, samples: list[GradientSample]
-    ) -> Iterable[GradientSample]:
+    def _embed_samples(self, samples: list[GradientSample]) -> Iterable[GradientSample]:
         """嵌入未嵌入的样本。"""
         for s in samples:
             if s.embedding is not None:

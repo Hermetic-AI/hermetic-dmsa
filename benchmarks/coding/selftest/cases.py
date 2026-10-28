@@ -1,4 +1,3 @@
-# ruff: noqa: RUF001
 """本地自出题: 合成仓库、带噪历史与可判分修复."""
 
 from __future__ import annotations
@@ -73,7 +72,6 @@ def _debug_session(
     return tuple(messages)
 
 
-
 def _noise(
     seed: int,
     label: str,
@@ -94,8 +92,10 @@ def _noise(
         path = target if related else alt_paths[index % len(alt_paths)]
         name = symbol if related else f"{decoy}_helper"
         if style in {0, 1}:
-            body = wrong_bodies[index % len(wrong_bodies)] if related else (
-                f"def {name}(value):\n    return value\n"
+            body = (
+                wrong_bodies[index % len(wrong_bodies)]
+                if related
+                else (f"def {name}(value):\n    return value\n")
             )
             if style == 1:
                 body = f"# 旧会话第 {index} 次尝试，未通过验证\n{body}"
@@ -145,8 +145,10 @@ def _clamp_case(seed: int) -> Case:
         (("tool", "FAILED test_lower\nAssertionError: assert 0 == -5"),),
         _debug_session(target, symbol, stub, gold),
     )
-    alt = {f"alt_{module}_{index}.py": f"def helper_{index}(value):\n    return value\n"
-           for index in range(3)}
+    alt = {
+        f"alt_{module}_{index}.py": f"def helper_{index}(value):\n    return value\n"
+        for index in range(3)
+    }
     return Case(
         case_id=f"clamp-{seed}",
         kind="bug",
@@ -191,8 +193,10 @@ def _slug_case(seed: int) -> Case:
         (("tool", "FAILED test_basic\nAssertionError: 'hello world' != 'hello-world'"),),
         _debug_session(target, "slugify", stub, gold),
     )
-    alt = {f"alt_{module}_{index}.py": f"def helper_{index}(value):\n    return value\n"
-           for index in range(3)}
+    alt = {
+        f"alt_{module}_{index}.py": f"def helper_{index}(value):\n    return value\n"
+        for index in range(3)
+    }
     return Case(
         case_id=f"slug-{seed}",
         kind="feature",
@@ -206,7 +210,7 @@ def _slug_case(seed: int) -> Case:
             "slug",
             target,
             "slugify",
-            (stub, 'def slugify(text):\n    return text.lower()\n'),
+            (stub, "def slugify(text):\n    return text.lower()\n"),
             tuple(alt),
         ),
         gold_text=gold,
@@ -238,8 +242,10 @@ def _retry_case(seed: int) -> Case:
         (("tool", "FAILED test_cap\nAssertionError: 102.4 != 1.6"),),
         _debug_session(target, symbol, stub, gold),
     )
-    alt = {f"alt_{module}_{index}.py": f"def helper_{index}(value):\n    return value\n"
-           for index in range(3)}
+    alt = {
+        f"alt_{module}_{index}.py": f"def helper_{index}(value):\n    return value\n"
+        for index in range(3)
+    }
     return Case(
         case_id=f"retry-{seed}",
         kind="bug",

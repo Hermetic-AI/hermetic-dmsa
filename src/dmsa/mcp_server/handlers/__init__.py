@@ -8,13 +8,13 @@ from dmsa.mcp_server.handlers.memory import (
     _handle_query_lineage,
     _handle_search,
 )
+from dmsa.mcp_server.handlers.tool_version import _register_handlers as _reg_tool_version
 from dmsa.mcp_server.tools import (
     TOOL_ADD_MEMORY,
     TOOL_QUERY_LINEAGE,
     TOOL_SEARCH,
     register_tool,
 )
-from dmsa.mcp_server.handlers.tool_version import _register_handlers as _reg_tool_version
 
 __all__ = ["register_default_handlers"]
 

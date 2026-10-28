@@ -1,4 +1,3 @@
-# ruff: noqa: D415, RUF002
 """以只读本地 HTTP 页面浏览 CodingMemory SQLite 记忆。"""
 
 from __future__ import annotations
@@ -30,8 +29,7 @@ def read_metadata(path: Path) -> dict[str, Any]:
     """读取计数、范围和检索维度，不返回记忆正文。"""
     with closing(_connect_readonly(path)) as db:
         tables = {
-            str(row[0])
-            for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            str(row[0]) for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")
         }
         required = {"requests", "messages", "chunks", "vectors"}
         if not required.issubset(tables):
@@ -249,5 +247,3 @@ def read_records(path: Path, query: dict[str, list[str]]) -> dict[str, Any]:
         "page_size": PAGE_SIZE,
         "pages": max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE),
     }
-
-

@@ -1,4 +1,3 @@
-# ruff: noqa: RUF002, D415
 """Coding Memory HTTP adapter。"""
 
 from __future__ import annotations
@@ -71,7 +70,13 @@ def create_app(memory: CodingMemory, api_key: str, rsi: IntegratedRSI | None = N
         try:
             request = AddContract.model_validate(payload)
             messages = [validate_message(message) for message in request.messages]
-            memory.add(request.request_id, request.user_id, request.session_id, messages)
+            memory.add(
+                request.request_id,
+                request.user_id,
+                request.session_id,
+                messages,
+                repo=request.repo,
+            )
         except ValidationError as exc:
             raise HTTPException(status_code=422, detail="invalid request") from exc
         except CodingMemoryValidationError as exc:
@@ -85,6 +90,7 @@ def create_app(memory: CodingMemory, api_key: str, rsi: IntegratedRSI | None = N
             "request_id": request.request_id,
             "user_id": request.user_id,
             "session_id": request.session_id,
+            "repo": request.repo,
         }
 
     @app.post("/search", dependencies=[Depends(authenticate)])
@@ -93,8 +99,16 @@ def create_app(memory: CodingMemory, api_key: str, rsi: IntegratedRSI | None = N
         try:
             request = SearchContract.model_validate(payload)
             if rsi is not None:
-                return rsi.search(request.query, request.user_id, request.top_k)
-            results = memory.search(request.query, request.user_id, request.top_k)
+                return rsi.search(
+                    request.query,
+                    request.user_id,
+                    request.top_k,
+                    task_id=request.task_id,
+                    repo=request.repo,
+                )
+            results = memory.search(
+                request.query, request.user_id, request.top_k, repo=request.repo
+            )
         except ValidationError as exc:
             raise HTTPException(status_code=422, detail="invalid request") from exc
         except CodingMemoryValidationError as exc:

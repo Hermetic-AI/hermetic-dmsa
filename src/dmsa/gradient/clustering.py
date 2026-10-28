@@ -59,12 +59,11 @@ class FallbackSingleLinkBackend:
         min_cluster_size: int = 2,
         distance_threshold: float = 0.3,
     ) -> None:
+        """初始化单链接后端, 校验阈值与最小簇大小。"""
         if min_cluster_size < 1:
             raise ValueError(f"min_cluster_size must be >= 1, got {min_cluster_size}")
         if not 0.0 <= distance_threshold <= 1.0:
-            raise ValueError(
-                f"distance_threshold must be in [0, 1], got {distance_threshold}"
-            )
+            raise ValueError(f"distance_threshold must be in [0, 1], got {distance_threshold}")
         self.min_cluster_size = min_cluster_size
         self.distance_threshold = distance_threshold
 
@@ -72,12 +71,18 @@ class FallbackSingleLinkBackend:
         """聚类样本。返回的 ClusterResult 列表按 cluster_id 排序（outlier 在最后）。"""
         if not samples:
             return []
-        # 确保所有样本都有 embedding
-        unembedded = [i for i, s in enumerate(samples) if s.embedding is None]
+        # 确保所有样本都有 embedding, 同时收窄可选类型供后续计算使用
+        embeddings: list[tuple[float, ...]] = []
+        unembedded = 0
+        for sample in samples:
+            if sample.embedding is None:
+                unembedded += 1
+                continue
+            embeddings.append(sample.embedding)
         if unembedded:
             raise ClusteringFailedError(
-                f"{len(unembedded)} samples lack embeddings; embed first",
-                details={"unembedded_count": len(unembedded)},
+                f"{unembedded} samples lack embeddings; embed first",
+                details={"unembedded_count": unembedded},
             )
 
         # 1. 预计算距离矩阵
@@ -106,10 +111,7 @@ class FallbackSingleLinkBackend:
 
         for i in range(n):
             for j in range(i + 1, n):
-                ei = samples[i].embedding
-                ej = samples[j].embedding
-                assert ei is not None and ej is not None
-                if cosine_distance(ei, ej) <= self.distance_threshold:
+                if cosine_distance(embeddings[i], embeddings[j]) <= self.distance_threshold:
                     union(i, j)
 
         # 2. 收集组
@@ -130,8 +132,7 @@ class FallbackSingleLinkBackend:
                 next_cluster_id += 1
                 support = tuple(samples[i] for i in indices)
                 # 计算质心
-                vectors = [list(samples[i].embedding) for i in indices]
-                assert all(v is not None for v in vectors)
+                vectors = [list(embeddings[i]) for i in indices]
                 dim = len(vectors[0])
                 centroid = [sum(v[d] for v in vectors) / len(vectors) for d in range(dim)]
                 # confidence: 1 - avg pairwise distance
@@ -144,7 +145,6 @@ class FallbackSingleLinkBackend:
                         for j_idx in range(i_idx + 1, len(indices)):
                             v_i = vectors[i_idx]
                             v_j = vectors[j_idx]
-                            assert v_i is not None and v_j is not None
                             total_dist += cosine_distance(v_i, v_j)
                             pair_count += 1
                     avg_dist = total_dist / pair_count if pair_count else 0.0
@@ -186,6 +186,7 @@ class HDBSCANBackend:
     name = "hdbscan"
 
     def __init__(self, *, min_cluster_size: int = 2, min_samples: int = 1) -> None:
+        """初始化 hdbscan 后端, 依赖缺失时抛 ClusteringFailedError。"""
         try:
             import hdbscan  # type: ignore[import-not-found]
         except ImportError as exc:
@@ -201,13 +202,19 @@ class HDBSCANBackend:
         """聚类样本。"""
         if not samples:
             return []
-        unembedded = [s for s in samples if s.embedding is None]
+        embeddings: list[tuple[float, ...]] = []
+        unembedded = 0
+        for sample in samples:
+            if sample.embedding is None:
+                unembedded += 1
+                continue
+            embeddings.append(sample.embedding)
         if unembedded:
             raise ClusteringFailedError(
-                f"{len(unembedded)} samples lack embeddings",
-                details={"unembedded_count": len(unembedded)},
+                f"{unembedded} samples lack embeddings",
+                details={"unembedded_count": unembedded},
             )
-        vectors = [list(s.embedding) for s in samples]
+        vectors = [list(embedding) for embedding in embeddings]
         clusterer = self._hdbscan.HDBSCAN(
             min_cluster_size=self.min_cluster_size,
             min_samples=self.min_samples,
@@ -255,9 +262,7 @@ class HDBSCANBackend:
         return results
 
 
-def get_default_backend(
-    *, prefer: str = "fallback", **kwargs: object
-) -> ClusteringBackend:
+def get_default_backend(*, prefer: str = "fallback", **kwargs: object) -> ClusteringBackend:
     """根据 ``prefer`` 返回默认聚类后端。
 
     ``prefer="fallback"``：零依赖单链接。

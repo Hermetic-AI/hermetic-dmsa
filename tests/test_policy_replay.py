@@ -156,9 +156,9 @@ def test_promotion_rejects_stale_baseline_and_duplicate_cases(tmp_path):
 
 def test_proposer_requires_support_and_lowers_redundancy_threshold():
     policy = RetrievalPolicy()
-    assert propose_policy(
-        policy, (FailureDiagnostic("exact_miss", 1),), development_only=True
-    ) == ()
+    assert (
+        propose_policy(policy, (FailureDiagnostic("exact_miss", 1),), development_only=True) == ()
+    )
     proposals = propose_policy(
         policy,
         (FailureDiagnostic("redundancy", 2, success_counterexamples=1),),
@@ -170,16 +170,28 @@ def test_proposer_requires_support_and_lowers_redundancy_threshold():
 def test_proposer_rejects_counterexample_diagnostics():
     with pytest.raises(OfflineRSIError):
         propose_policy(RetrievalPolicy(), (FailureDiagnostic("bad", -1),), development_only=True)
-    assert propose_policy(
-        RetrievalPolicy(), (FailureDiagnostic("exact_miss", 2, success_counterexamples=3),),
-        development_only=True,
-    ) == ()
+    assert (
+        propose_policy(
+            RetrievalPolicy(),
+            (FailureDiagnostic("exact_miss", 2, success_counterexamples=3),),
+            development_only=True,
+        )
+        == ()
+    )
 
 
 def test_fabricated_report_cannot_register(tmp_path):
-    report = ReplayReport("b", "c", "corpus", "cases", 1, 10, 10,
-                          (CaseResult("c", ("x",), ("x",), "s"),),
-                          (CaseResult("c", ("x",), ("x",), "s"),))
+    report = ReplayReport(
+        "b",
+        "c",
+        "corpus",
+        "cases",
+        1,
+        10,
+        10,
+        (CaseResult("c", ("x",), ("x",), "s"),),
+        (CaseResult("c", ("x",), ("x",), "s"),),
+    )
     registry = PolicyRegistry(tmp_path / "registry.sqlite")
     with pytest.raises(OfflineRSIError):
         registry.register(RetrievalPolicy(), report)
@@ -191,10 +203,16 @@ def test_tampered_report_is_rejected(tmp_path):
     baseline = RetrievalPolicy(SearchPolicy(candidate_limit=1))
     candidate = RetrievalPolicy(SearchPolicy(candidate_limit=10))
     relevant = memory.search("alpha target", "u", 2, candidate.search)[1].id
-    report = run_replay(memory, baseline, candidate,
-                        (ReplayCase("c", "u", "alpha target", (relevant,), "s"),),
-                        top_k=2, max_chars=DEFAULT_CHARS, max_tokens=DEFAULT_TOKENS,
-                        development_only=True)
+    report = run_replay(
+        memory,
+        baseline,
+        candidate,
+        (ReplayCase("c", "u", "alpha target", (relevant,), "s"),),
+        top_k=2,
+        max_chars=DEFAULT_CHARS,
+        max_tokens=DEFAULT_TOKENS,
+        development_only=True,
+    )
     tampered = replace(report, corpus_hash="changed")
     registry = PolicyRegistry(tmp_path / "registry.sqlite")
     with pytest.raises(OfflineRSIError):
@@ -205,8 +223,9 @@ def test_tampered_report_is_rejected(tmp_path):
 
 def test_gate_rejects_mismatched_slices_and_nan_budget():
     result = CaseResult("c", ("x",), ("x",), "s")
-    report = ReplayReport("b", "c", "corpus", "cases", 1, 10, 10, (result,),
-                          (replace(result, slice="other"),))
+    report = ReplayReport(
+        "b", "c", "corpus", "cases", 1, 10, 10, (result,), (replace(result, slice="other"),)
+    )
     assert not gate(report)
     assert not gate(replace(report, max_chars=True))
 
@@ -226,10 +245,16 @@ def test_replay_detects_corpus_mutation(tmp_path, monkeypatch):
 
     monkeypatch.setattr(memory, "search", mutating_search)
     with pytest.raises(OfflineRSIError, match="corpus changed"):
-        run_replay(memory, RetrievalPolicy(), RetrievalPolicy(),
-                   (ReplayCase("c", "u", "alpha", ("missing",), "s"),),
-                   top_k=1, max_chars=DEFAULT_CHARS, max_tokens=DEFAULT_TOKENS,
-                   development_only=True)
+        run_replay(
+            memory,
+            RetrievalPolicy(),
+            RetrievalPolicy(),
+            (ReplayCase("c", "u", "alpha", ("missing",), "s"),),
+            top_k=1,
+            max_chars=DEFAULT_CHARS,
+            max_tokens=DEFAULT_TOKENS,
+            development_only=True,
+        )
     memory.close()
 
 
@@ -237,6 +262,14 @@ def test_replay_rejects_non_integer_budget(tmp_path):
     memory = fixture_memory(tmp_path)
     case = ReplayCase("c", "u", "alpha", ("missing",), "s")
     with pytest.raises(OfflineRSIError, match="positive integers"):
-        run_replay(memory, RetrievalPolicy(), RetrievalPolicy(), (case,),
-                   top_k=1, max_chars=True, max_tokens=DEFAULT_TOKENS, development_only=True)
+        run_replay(
+            memory,
+            RetrievalPolicy(),
+            RetrievalPolicy(),
+            (case,),
+            top_k=1,
+            max_chars=True,
+            max_tokens=DEFAULT_TOKENS,
+            development_only=True,
+        )
     memory.close()

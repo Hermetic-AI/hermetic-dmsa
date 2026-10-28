@@ -8,15 +8,15 @@ SGA 的核心：当 :class:`FusedGradient` 标记 ``has_conflict=True`` 时，
 from __future__ import annotations
 
 import re
-from typing import Iterable
+from collections.abc import Iterable
 
 from dmsa.errors import FusionConflictError
 from dmsa.gradient.embedding import cosine_distance
 from dmsa.types import FusedGradient, GradientSample
 
 __all__ = [
-    "ConflictDetector",
     "ConditionalBranchSynthesizer",
+    "ConflictDetector",
     "SynthesizedBranch",
 ]
 
@@ -24,7 +24,7 @@ __all__ = [
 class SynthesizedBranch:
     """生成的条件分支。"""
 
-    __slots__ = ("condition", "then_text", "else_text", "confidence")
+    __slots__ = ("condition", "confidence", "else_text", "then_text")
 
     def __init__(
         self,
@@ -33,6 +33,7 @@ class SynthesizedBranch:
         else_text: str,
         confidence: float,
     ) -> None:
+        """初始化条件分支, 记录条件文本、两个分支文本与置信度。"""
         self.condition = condition
         self.then_text = then_text
         self.else_text = else_text
@@ -43,10 +44,8 @@ class SynthesizedBranch:
         return f"if ({self.condition}) then: {self.then_text} | else: {self.else_text}"
 
     def __repr__(self) -> str:
-        return (
-            f"SynthesizedBranch(condition={self.condition!r}, "
-            f"confidence={self.confidence:.2f})"
-        )
+        """返回条件分支的调试表示（仅含条件与置信度）。"""
+        return f"SynthesizedBranch(condition={self.condition!r}, confidence={self.confidence:.2f})"
 
 
 class ConflictDetector:
@@ -56,7 +55,7 @@ class ConflictDetector:
     若距离 > ``threshold``（默认 0.3），则视为真冲突。
     """
 
-    __slots__ = ("_threshold", "_distance_fn")
+    __slots__ = ("_distance_fn", "_threshold")
 
     def __init__(
         self,
@@ -64,6 +63,7 @@ class ConflictDetector:
         threshold: float = 0.3,
         distance_fn: object = None,
     ) -> None:
+        """初始化冲突检测器, 校验阈值区间并绑定距离函数。"""
         if not 0.0 <= threshold <= 1.0:
             raise ValueError(f"threshold must be in [0, 1], got {threshold}")
         self._threshold = threshold
@@ -113,7 +113,8 @@ class ConflictDetector:
             for sb in b_list:
                 ea = sa.embedding
                 eb = sb.embedding
-                assert ea is not None and eb is not None
+                assert ea is not None
+                assert eb is not None
                 total += self._distance_fn(ea, eb)  # type: ignore[operator]
                 count += 1
         return total / count if count else 0.0
@@ -125,15 +126,27 @@ class ConditionalBranchSynthesizer:
     零依赖实现：用正则从冲突文本里提取 directive 关键词，构造分支。
     """
 
-    __slots__ = ("_condition_keywords", "_branch_template")
+    __slots__ = ("_branch_template", "_condition_keywords")
 
     _CONDITION_KEYWORDS = (
-        "short", "concise", "brief", "简短", "简洁",
-        "detailed", "verbose", "long", "详细", "详尽",
-        "use markdown", "use code", "用 markdown", "用代码",
+        "short",
+        "concise",
+        "brief",
+        "简短",
+        "简洁",
+        "detailed",
+        "verbose",
+        "long",
+        "详细",
+        "详尽",
+        "use markdown",
+        "use code",
+        "用 markdown",
+        "用代码",
     )
 
     def __init__(self, *, branch_template: str = "if ({cond}) then: {then_} else: {else_}") -> None:
+        """初始化条件分支合成器, 保存分支模板。"""
         self._branch_template = branch_template
 
     def synthesize(

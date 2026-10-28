@@ -14,7 +14,6 @@ from dmsa.gradient.replay_gate import gate as gate
 from dmsa.gradient.replay_models import CaseResult, ReplayCase, ReplayReport
 from dmsa.memory import CodingMemory, estimate_tokens
 
-GATE_VERSION = "offline-rsi-gate-v1"
 _EXECUTED_REPORTS: set[str] = set()
 
 
@@ -53,7 +52,11 @@ def run_replay(
         raise OfflineRSIError("budgets must be positive integers")
     if any(
         not isinstance(c, ReplayCase)
-        or not c.case_id or not c.user_id or not c.query or not c.slice or not c.relevant_ids
+        or not c.case_id
+        or not c.user_id
+        or not c.query
+        or not c.slice
+        or not c.relevant_ids
         for c in cases
     ):
         raise OfflineRSIError("malformed replay case")

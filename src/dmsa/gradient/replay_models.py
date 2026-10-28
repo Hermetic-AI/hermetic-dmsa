@@ -4,12 +4,18 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from dataclasses import dataclass
 from typing import Any
 
 from dmsa.gradient.policy import OfflineRSIError
 
-GATE_VERSION = "offline-rsi-gate-v1"
+GATE_VERSION = "offline-rsi-gate-v2"
+
+
+def _log2(value: int) -> float:
+    """返回以 2 为底的对数, 供 NDCG 折损计算使用."""
+    return math.log2(value)
 
 
 def digest(value: object) -> str:
@@ -34,12 +40,17 @@ class ReplayCase:
 
     def __post_init__(self) -> None:
         """拒绝缺失标签、可变相关 ID 和非文本字段."""
-        if any(not isinstance(x, str) or not x.strip()
-               for x in (self.case_id, self.user_id, self.query, self.slice, self.noise_group)):
+        if any(
+            not isinstance(x, str) or not x.strip()
+            for x in (self.case_id, self.user_id, self.query, self.slice, self.noise_group)
+        ):
             raise OfflineRSIError("replay case requires nonempty text fields")
-        if (not isinstance(self.relevant_ids, tuple) or not self.relevant_ids
-                or any(not isinstance(x, str) or not x for x in self.relevant_ids)
-                or len(set(self.relevant_ids)) != len(self.relevant_ids)):
+        if (
+            not isinstance(self.relevant_ids, tuple)
+            or not self.relevant_ids
+            or any(not isinstance(x, str) or not x for x in self.relevant_ids)
+            or len(set(self.relevant_ids)) != len(self.relevant_ids)
+        ):
             raise OfflineRSIError("replay case requires unique relevant IDs")
 
 
@@ -59,6 +70,20 @@ class CaseResult:
         """返回样本的相关证据召回率."""
         overlap = len(set(self.retrieved_ids) & set(self.relevant_ids))
         return overlap / max(1, len(self.relevant_ids))
+
+    @property
+    def ndcg(self) -> float:
+        """返回按返回顺序计算的归一化折损累积增益."""
+        relevant = set(self.relevant_ids)
+        if not relevant:
+            return 0.0
+        dcg = sum(
+            1.0 / _log2(rank + 1)
+            for rank, item in enumerate(self.retrieved_ids, 1)
+            if item in relevant
+        )
+        ideal = sum(1.0 / _log2(rank + 1) for rank in range(1, len(relevant) + 1))
+        return dcg / ideal if ideal else 0.0
 
 
 def result_dict(value: CaseResult) -> dict[str, Any]:
@@ -92,6 +117,41 @@ class ReplayReport:
     def report_hash(self) -> str:
         """返回完整证据报告摘要."""
         return digest(self.to_dict())
+
+    @staticmethod
+    def _mean(values: tuple[float, ...]) -> float:
+        """返回样本均值, 空集合按零处理."""
+        return sum(values) / len(values) if values else 0.0
+
+    @property
+    def mean_recall_before(self) -> float:
+        """返回基线平均召回率."""
+        return self._mean(tuple(item.recall for item in self.before))
+
+    @property
+    def mean_recall_after(self) -> float:
+        """返回候选平均召回率."""
+        return self._mean(tuple(item.recall for item in self.after))
+
+    @property
+    def mean_ndcg_before(self) -> float:
+        """返回基线平均排序质量."""
+        return self._mean(tuple(item.ndcg for item in self.before))
+
+    @property
+    def mean_ndcg_after(self) -> float:
+        """返回候选平均排序质量."""
+        return self._mean(tuple(item.ndcg for item in self.after))
+
+    @property
+    def tokens_before(self) -> int:
+        """返回基线证据 token 总量."""
+        return sum(item.used_tokens for item in self.before)
+
+    @property
+    def tokens_after(self) -> int:
+        """返回候选证据 token 总量."""
+        return sum(item.used_tokens for item in self.after)
 
     def to_dict(self) -> dict[str, Any]:
         """返回可持久化的规范字段."""

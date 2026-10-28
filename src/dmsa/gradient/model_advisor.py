@@ -1,4 +1,3 @@
-# ruff: noqa: D415, RUF002
 """将模型限制为 RSI 候选选择与解释，不授予策略写入权限。"""
 
 from __future__ import annotations
@@ -90,7 +89,18 @@ class ModelAssistedPolicyProposer:
         safe_diagnostics = [
             asdict(item)
             for item in diagnostics
-            if item.kind in {"exact_miss", "redundancy", "missing_context"}
+            if item.kind
+            in {
+                "coarse_chunk",
+                "exact_miss",
+                "identifier_confusion",
+                "missing_context",
+                "missing_relation",
+                "missing_structure",
+                "redundancy",
+                "stale_evidence",
+                "unknown",
+            }
         ]
         selected = self._select(available, safe_diagnostics)
         return tuple(

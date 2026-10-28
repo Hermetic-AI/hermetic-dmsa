@@ -1,4 +1,3 @@
-# ruff: noqa: RUF001
 """本地自出题闭环: 建仓 -> Add -> Search -> 打补丁 -> pytest 判定."""
 
 from __future__ import annotations
@@ -148,16 +147,13 @@ def _run_once(
             (rank for rank, hit_id in enumerate(hit_ids, 1) if hit_id in gold_ids), None
         )
         answer_present = any(case.gold_text in content for content in evidence)
-        analogy_present = (
-            analogy is not None
-            and any(analogy.gold_text in content for content in evidence)
+        analogy_present = analogy is not None and any(
+            analogy.gold_text in content for content in evidence
         )
         solve_started = time.perf_counter()
         extra: dict[str, Any] = {}
         if agent_argv:
-            result, extra = _solve_with_agent(
-                agent_argv, agent_timeout, case, root, evidence
-            )
+            result, extra = _solve_with_agent(agent_argv, agent_timeout, case, root, evidence)
         elif history_mode == "analogy" and analogy is not None:
             result = solve_by_analogy(
                 evidence, root, case.test_file, analogy.substitutions, max_attempts
@@ -200,11 +196,7 @@ def _summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "evidence_recall": _mean([float(row["recall"]) for row in rows]),
         "answer_present_rate": _mean([float(row["answer_present"]) for row in rows]),
         "analogy_present_rate": _mean(
-            [
-                float(row["analogy_present"])
-                for row in rows
-                if row["analogy_present"] is not None
-            ]
+            [float(row["analogy_present"]) for row in rows if row["analogy_present"] is not None]
         ),
         "mean_hits": _mean([float(row["hits"]) for row in rows]),
         "mean_evidence_tokens": _mean([float(row["evidence_tokens"]) for row in rows]),

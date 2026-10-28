@@ -1,4 +1,3 @@
-# ruff: noqa: RUF002
 """本地记忆浏览器的数据筛选与只读契约。"""
 
 import json

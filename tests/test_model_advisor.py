@@ -1,4 +1,3 @@
-# ruff: noqa: RUF002
 """模型辅助 RSI 的边界与回退测试。"""
 
 from __future__ import annotations
@@ -55,9 +54,7 @@ def test_model_advisor_selects_only_deterministic_candidates() -> None:
 )
 def test_model_advisor_rejects_invalid_selection(response: str) -> None:
     """格式错误、越界索引和 bool 不能变成策略参数。"""
-    advisor = ModelAssistedPolicyProposer(
-        _ChatClient(response), _ChatClient("rationale")
-    )
+    advisor = ModelAssistedPolicyProposer(_ChatClient(response), _ChatClient("rationale"))
     with pytest.raises(OfflineRSIError, match="invalid candidate selection"):
         advisor.propose(
             RetrievalPolicy(),
@@ -71,11 +68,14 @@ def test_model_advisor_does_not_call_models_without_rule_candidates() -> None:
     decision = _ChatClient("invalid")
     text = _ChatClient("unused")
     advisor = ModelAssistedPolicyProposer(decision, text)
-    assert advisor.propose(
-        RetrievalPolicy(),
-        (FailureDiagnostic("exact_miss", 1),),
-        development_only=True,
-    ) == ()
+    assert (
+        advisor.propose(
+            RetrievalPolicy(),
+            (FailureDiagnostic("exact_miss", 1),),
+            development_only=True,
+        )
+        == ()
+    )
     assert decision.calls == []
     assert text.calls == []
 

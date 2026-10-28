@@ -46,6 +46,7 @@ def set_aggregator(aggregator: Any) -> None:
     global _aggregator
     _aggregator = aggregator
 
+
 # 聚合结果缓存：feedback_id -> AGSAggregationResult。
 # v0.1 为单进程内存态（server 重启即失效）；每个 MCP server 进程独立，
 # 不需要跨进程共享（见 AGENTS.md 路径注意事项）。
@@ -115,9 +116,7 @@ def _handle_apply_gradient(args: dict[str, Any], layer: Any) -> dict[str, Any]:
     """
     feedback_id = args.get("feedback_id", "")
     if not feedback_id:
-        raise GradientAggregationError(
-            "feedback_id required", details={"field": "feedback_id"}
-        )
+        raise GradientAggregationError("feedback_id required", details={"field": "feedback_id"})
     result = _aggregations.get(feedback_id)
     if result is None:
         raise GradientAggregationError(
@@ -128,9 +127,7 @@ def _handle_apply_gradient(args: dict[str, Any], layer: Any) -> dict[str, Any]:
             },
         )
     cluster_id = int(args.get("cluster_id", 0))
-    fused = next(
-        (f for f in result.fused_gradients if f.cluster_id == cluster_id), None
-    )
+    fused = next((f for f in result.fused_gradients if f.cluster_id == cluster_id), None)
     if fused is None:
         raise GradientAggregationError(
             f"cluster_id {cluster_id} not in aggregation {feedback_id!r}",

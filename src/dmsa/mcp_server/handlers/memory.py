@@ -8,14 +8,14 @@ from __future__ import annotations
 from typing import Any
 
 from dmsa.errors import MemoryLayerError
+from dmsa.mcp_server.tools import register_tool
 from dmsa.memory import (
     LineageDirection,
     LineageQuery,
     create_prompt_context,
 )
-from dmsa.mcp_server.tools import register_tool
 
-__all__ = ["register_default_handlers", "_handle_add_memory", "_handle_query_lineage", "_handle_search"]
+__all__ = ["_handle_add_memory", "_handle_query_lineage", "_handle_search"]
 
 
 def _node_to_dict(node: Any) -> dict[str, Any]:
@@ -24,7 +24,11 @@ def _node_to_dict(node: Any) -> dict[str, Any]:
         "id": node.id,
         "version": node.version,
         "content": node.content,
-        "content_type": node.content_type.value if hasattr(node.content_type, "value") else str(node.content_type),
+        "content_type": (
+            node.content_type.value
+            if hasattr(node.content_type, "value")
+            else str(node.content_type)
+        ),
         "creator_prompt_id": node.creator_prompt_id,
         "creator_agent_id": node.creator_agent_id,
         "requires_grad": node.requires_grad,

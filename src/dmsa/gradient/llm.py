@@ -96,13 +96,12 @@ class OpenAIEmbedder:
         api_key_env: str = "OPENAI_API_KEY",
         base_url: str = "",
     ) -> None:
+        """初始化 OpenAI 兼容嵌入客户端, 缺省参数取自环境变量。"""
         if dim <= 0:
             raise ValueError(f"dim must be positive, got {dim}")
         self.model = model
         self.dim = dim
-        self._client = (
-            client if client is not None else _make_openai_client(api_key_env, base_url)
-        )
+        self._client = client if client is not None else _make_openai_client(api_key_env, base_url)
 
     def embed(self, text: str) -> list[float]:
         """嵌入单段文本。"""
@@ -158,12 +157,11 @@ class LLMFusion:
         api_key_env: str = "OPENAI_API_KEY",
         base_url: str = "",
     ) -> None:
+        """初始化 LLM 融合客户端, 缺省参数取自环境变量。"""
         self.model = model
         self.temperature = temperature
         self._fallback = fallback
-        self._client = (
-            client if client is not None else _make_openai_client(api_key_env, base_url)
-        )
+        self._client = client if client is not None else _make_openai_client(api_key_env, base_url)
 
     def fuse(
         self,

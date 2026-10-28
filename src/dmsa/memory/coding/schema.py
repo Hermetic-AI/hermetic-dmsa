@@ -8,7 +8,25 @@ def scope_token(user_id: str) -> str:
     """将不透明 scope 编码成单个无碰撞 FTS 词项."""
     return "s" + user_id.encode("utf-8").hex()
 
-SCHEMA = """
+
+# 条目统计表结构单独抽出: 只有 RSI 侧连接的库也需要这张表才能记账.
+STATS_SCHEMA = """
+            CREATE TABLE IF NOT EXISTS memory_stats(
+              chunk_id TEXT NOT NULL, user_id TEXT NOT NULL,
+              retrieved INTEGER NOT NULL DEFAULT 0,
+              confirmed INTEGER NOT NULL DEFAULT 0,
+              contradicted INTEGER NOT NULL DEFAULT 0,
+              verified INTEGER NOT NULL DEFAULT 0,
+              evicted INTEGER NOT NULL DEFAULT 0,
+              first_revision INTEGER NOT NULL DEFAULT 0,
+              created_at INTEGER NOT NULL, last_used INTEGER, updated_at INTEGER NOT NULL,
+              PRIMARY KEY(user_id, chunk_id));
+            CREATE INDEX IF NOT EXISTS memory_stats_user ON memory_stats(user_id, chunk_id);
+"""
+
+
+SCHEMA = (
+    """
 CREATE TABLE IF NOT EXISTS requests(
               user_id TEXT NOT NULL, request_id TEXT NOT NULL, session_id TEXT NOT NULL,
               payload_hash TEXT NOT NULL, revision INTEGER NOT NULL,
@@ -45,11 +63,62 @@ CREATE TABLE IF NOT EXISTS requests(
               user_id TEXT NOT NULL, chunk_id TEXT NOT NULL, term TEXT NOT NULL,
               PRIMARY KEY(user_id, chunk_id, term));
             CREATE INDEX IF NOT EXISTS exact_scope_term ON exact_terms(user_id, term, chunk_id);
+            CREATE TABLE IF NOT EXISTS code_anchors(
+              user_id TEXT NOT NULL, chunk_id TEXT NOT NULL, term TEXT NOT NULL,
+              path TEXT NOT NULL, symbol TEXT NOT NULL, kind TEXT NOT NULL);
+            CREATE INDEX IF NOT EXISTS code_anchors_term ON code_anchors(user_id, term);
+            CREATE INDEX IF NOT EXISTS code_anchors_chunk ON code_anchors(user_id, chunk_id);
+            CREATE TABLE IF NOT EXISTS code_relations(
+              user_id TEXT NOT NULL, chunk_id TEXT NOT NULL, rel_type TEXT NOT NULL,
+              target TEXT NOT NULL);
+            CREATE INDEX IF NOT EXISTS code_relations_target ON code_relations(user_id, target);
+            CREATE INDEX IF NOT EXISTS code_relations_chunk ON code_relations(user_id, chunk_id);
+            CREATE TABLE IF NOT EXISTS repo_snapshots(
+              user_id TEXT NOT NULL, root TEXT NOT NULL, created_at TEXT NOT NULL,
+              payload TEXT NOT NULL, PRIMARY KEY(user_id, root));
             CREATE TABLE IF NOT EXISTS corpus(user_id TEXT PRIMARY KEY, revision INTEGER NOT NULL);
             CREATE TABLE IF NOT EXISTS scope_epochs(
               user_id TEXT PRIMARY KEY, epoch INTEGER NOT NULL);
+            CREATE TABLE IF NOT EXISTS procedures(
+              id TEXT PRIMARY KEY, user_id TEXT NOT NULL, request_id TEXT NOT NULL,
+              title TEXT NOT NULL, steps TEXT NOT NULL, preconditions TEXT NOT NULL,
+              verification TEXT NOT NULL, trigger_terms TEXT NOT NULL, paths TEXT NOT NULL,
+              outcome TEXT NOT NULL, created_at INTEGER NOT NULL);
+            CREATE INDEX IF NOT EXISTS procedures_scope ON procedures(user_id, id);
+            CREATE TABLE IF NOT EXISTS procedure_terms(
+              user_id TEXT NOT NULL, procedure_id TEXT NOT NULL, term TEXT NOT NULL,
+              PRIMARY KEY(user_id, procedure_id, term));
+            CREATE INDEX IF NOT EXISTS procedure_terms_term ON procedure_terms(user_id, term);
+            CREATE TABLE IF NOT EXISTS write_authors(
+              user_id TEXT NOT NULL, chunk_id TEXT NOT NULL, author TEXT NOT NULL,
+              PRIMARY KEY(user_id, chunk_id));
+            CREATE INDEX IF NOT EXISTS write_authors_author ON write_authors(user_id, author);
+            CREATE TABLE IF NOT EXISTS write_conflicts(
+              id TEXT PRIMARY KEY, user_id TEXT NOT NULL,
+              chunk_id TEXT NOT NULL, rival_chunk_id TEXT NOT NULL,
+              author TEXT NOT NULL, rival_author TEXT NOT NULL,
+              similarity REAL NOT NULL, status TEXT NOT NULL, resolution TEXT NOT NULL,
+              created_at INTEGER NOT NULL, resolved_at INTEGER);
+            CREATE INDEX IF NOT EXISTS write_conflicts_scope ON write_conflicts(user_id, status);
+            CREATE TABLE IF NOT EXISTS memory_consolidations(
+              id TEXT PRIMARY KEY, user_id TEXT NOT NULL, chunk_id TEXT NOT NULL,
+              group_key TEXT NOT NULL, rule TEXT NOT NULL, source_ids TEXT NOT NULL,
+              paths TEXT NOT NULL, symbols TEXT NOT NULL, transferable INTEGER NOT NULL,
+              created_at INTEGER NOT NULL);
+            CREATE INDEX IF NOT EXISTS memory_consolidations_scope
+              ON memory_consolidations(user_id, group_key);
+            CREATE TABLE IF NOT EXISTS memory_transfers(
+              id TEXT PRIMARY KEY, user_id TEXT NOT NULL, source_scope TEXT NOT NULL,
+              target_scope TEXT NOT NULL, chunk_id TEXT NOT NULL, source_ids TEXT NOT NULL,
+              created_at INTEGER NOT NULL);
+            CREATE INDEX IF NOT EXISTS memory_transfers_scope
+              ON memory_transfers(user_id, target_scope);
+"""
+    + STATS_SCHEMA
+    + """
             CREATE TABLE IF NOT EXISTS metadata(key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
+)
 
 
 def _fts_uses_trigram(db: sqlite3.Connection) -> bool:
@@ -86,9 +155,7 @@ def initialize(db: sqlite3.Connection) -> None:
             "INSERT OR IGNORE INTO scope_epochs(user_id, epoch) "
             "SELECT user_id, revision FROM corpus"
         )
-        db.execute(
-            "INSERT OR IGNORE INTO metadata(key, value) VALUES('corpus_generation', '0')"
-        )
+        db.execute("INSERT OR IGNORE INTO metadata(key, value) VALUES('corpus_generation', '0')")
         db.commit()
     except sqlite3.Error:
         db.rollback()

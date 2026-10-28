@@ -1,4 +1,3 @@
-# ruff: noqa: D415, RUF002
 """向量索引协议与 Qdrant 实现。"""
 
 from __future__ import annotations

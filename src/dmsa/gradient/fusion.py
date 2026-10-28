@@ -15,7 +15,7 @@ from typing import Protocol
 from dmsa.errors import FusionConflictError
 from dmsa.types import FusedGradient, GradientSample
 
-__all__ = ["FusionClient", "StaticFusion", "RuleBasedFusion"]
+__all__ = ["FusionClient", "RuleBasedFusion", "StaticFusion"]
 
 
 class FusionClient(Protocol):
@@ -80,13 +80,26 @@ class RuleBasedFusion:
     name = "rule-based"
 
     NEGATION_KEYWORDS = (
-        "不要", "避免", "禁止", "no", "not", "never", "avoid", "don't",
+        "不要",
+        "避免",
+        "禁止",
+        "no",
+        "not",
+        "never",
+        "avoid",
+        "don't",
     )
     DIRECTIVE_KEYWORDS = (
-        "应该", "必须", "应当", "should", "must", "always",
+        "应该",
+        "必须",
+        "应当",
+        "should",
+        "must",
+        "always",
     )
 
     def __init__(self, *, conflict_marker: str = "[CONFLICT_DETECTED]") -> None:
+        """初始化融合器, conflict_marker 用于标记冲突片段。"""
         self.conflict_marker = conflict_marker
 
     def fuse(
@@ -101,17 +114,17 @@ class RuleBasedFusion:
                 details={"cluster_id": cluster_id},
             )
         sev = statistics.mean(s.severity for s in samples)
-        confidence = 1.0 if len(samples) == 1 else max(
-            0.0, 1.0 - statistics.variance(s.severity for s in samples)
+        confidence = (
+            1.0
+            if len(samples) == 1
+            else max(0.0, 1.0 - statistics.variance(s.severity for s in samples))
         )
         # 冲突检测：簇内既有 NEGATION 又有 DIRECTIVE
         has_neg = any(
-            any(kw in s.feedback_text.lower() for kw in self.NEGATION_KEYWORDS)
-            for s in samples
+            any(kw in s.feedback_text.lower() for kw in self.NEGATION_KEYWORDS) for s in samples
         )
         has_dir = any(
-            any(kw in s.feedback_text.lower() for kw in self.DIRECTIVE_KEYWORDS)
-            for s in samples
+            any(kw in s.feedback_text.lower() for kw in self.DIRECTIVE_KEYWORDS) for s in samples
         )
         has_conflict = has_neg and has_dir
         # 拼接

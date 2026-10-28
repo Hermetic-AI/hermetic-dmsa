@@ -37,9 +37,7 @@ def _claims(stdout: str) -> tuple[bool | None, str | None]:
     )
 
 
-def run_agent(
-    argv: list[str], payload: dict[str, Any], timeout: float = 600.0
-) -> AgentRun:
+def run_agent(argv: list[str], payload: dict[str, Any], timeout: float = 600.0) -> AgentRun:
     """以 JSON stdin 调用外部 Agent; 不经 shell, 只允许改仓库目录."""
     if not argv or any(not isinstance(part, str) or not part for part in argv):
         raise ValueError("agent argv must be a nonempty list of strings")

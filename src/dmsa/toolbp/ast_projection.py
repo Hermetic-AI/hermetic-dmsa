@@ -9,12 +9,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Any, Iterable
+from typing import Any
 
 from dmsa.errors import SchemaValidationError
 
-__all__ = ["SchemaNode", "parse_schema", "dump_schema", "find_node", "update_node"]
+__all__ = ["SchemaNode", "dump_schema", "find_node", "parse_schema", "update_node"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,8 +37,8 @@ class SchemaNode:
     schema_type: str = "object"
     description: str = ""
     required: bool = False
-    properties: dict[str, "SchemaNode"] = field(default_factory=dict)
-    items: "SchemaNode | None" = None
+    properties: dict[str, SchemaNode] = field(default_factory=dict)
+    items: SchemaNode | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """导出为 JSON Schema dict。"""
@@ -69,7 +70,7 @@ def parse_schema(schema: dict[str, Any], *, path: tuple[str, ...] = ()) -> Schem
     if schema_type == "object" and "properties" in schema:
         required_set = set(schema.get("required", []))
         for prop_name, prop_schema in schema["properties"].items():
-            child = parse_schema(prop_schema, path=path + ("properties", prop_name))
+            child = parse_schema(prop_schema, path=(*path, "properties", prop_name))
             # 标记 required
             if prop_name in required_set:
                 child = SchemaNode(
@@ -84,7 +85,7 @@ def parse_schema(schema: dict[str, Any], *, path: tuple[str, ...] = ()) -> Schem
             children[prop_name] = child
 
     if schema_type == "array" and "items" in schema:
-        items_node = parse_schema(schema["items"], path=path + ("items",))
+        items_node = parse_schema(schema["items"], path=(*path, "items"))
 
     return SchemaNode(
         path=path,

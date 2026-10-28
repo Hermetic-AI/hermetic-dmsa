@@ -23,8 +23,8 @@ from dmsa.inspect.cli import (
 
 __all__ = [
     "inspect_dag",
-    "inspect_node",
     "inspect_lineage",
     "inspect_metrics",
+    "inspect_node",
     "inspect_versions",
 ]

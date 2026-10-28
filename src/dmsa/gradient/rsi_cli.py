@@ -1,4 +1,3 @@
-# ruff: noqa: D415, RUF002
 """为离线 RSI 提供有界的模型辅助候选建议 CLI。"""
 
 from __future__ import annotations

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from typing import Protocol, cast
 
@@ -59,6 +59,34 @@ class SourceMessage:
             raise CodingMemoryValidationError("timestamp must be a nonnegative integer")
 
 
+def require_optional_identifier(value: object, field: str) -> None:
+    """校验可缺省的标识字段: 空字符串表示不启用该维度."""
+    if not isinstance(value, str):
+        raise CodingMemoryValidationError(f"{field} must be text")
+    if value:
+        require_identifier(value, field)
+
+
+def normalize_messages(messages: Iterable[SourceMessage]) -> tuple[SourceMessage, ...]:
+    """校验并冻结一组有序的纯文本来源消息."""
+    try:
+        result = tuple(messages)
+    except TypeError as exc:
+        raise CodingMemoryValidationError("messages must be iterable") from exc
+    if not result:
+        raise CodingMemoryValidationError("messages must not be empty")
+    for message in result:
+        if not isinstance(message, SourceMessage):
+            raise CodingMemoryValidationError("messages must contain SourceMessage objects")
+        require_text(message.role, "role")
+        require_text(message.content, "content")
+        if message.timestamp is not None and (
+            type(message.timestamp) is not int or message.timestamp < 0
+        ):
+            raise CodingMemoryValidationError("timestamp must be a nonnegative integer")
+    return result
+
+
 @dataclass(frozen=True)
 class SearchPolicy:
     """有界检索通道、扩展和证据预算设置."""
@@ -67,6 +95,12 @@ class SearchPolicy:
     sparse_weight: float = 1.0
     dense_weight: float = 1.0
     experience_weight: float = 1.0
+    anchor_weight: float = 0.6
+    chunk_size: int = 1800
+    chunk_overlap: int = 160
+    stale_penalty: float = 0.01
+    skeleton_depth: int = 6
+    relation_window: int = 0
     candidate_limit: int = 240
     neighbor_window: int = 1
     max_chars: int = 120000
@@ -78,11 +112,19 @@ class SearchPolicy:
     score_floor_ratio: float = 0.45
     per_path_limit: int = 6
     min_evidence: int = 4
+    trust_weight: float = 0.02
+    admission_similarity: float = 0.95
 
     def __post_init__(self) -> None:
         """拒绝非有限权重、布尔整数和无界策略值."""
         weights = (self.exact_weight, self.sparse_weight, self.dense_weight, self.experience_weight)
-        for value in (*weights, self.redundancy_threshold, self.score_floor_ratio):
+        for value in (
+            *weights,
+            self.redundancy_threshold,
+            self.score_floor_ratio,
+            self.trust_weight,
+            self.admission_similarity,
+        ):
             if isinstance(value, bool) or not isinstance(value, (float, int)):
                 raise CodingMemoryValidationError("policy weights must be finite numbers")
             if not math.isfinite(value):
@@ -91,6 +133,26 @@ class SearchPolicy:
             raise CodingMemoryValidationError("channel weights must be in [0, 10] and not all zero")
         if not 0 <= self.experience_weight <= 10:
             raise CodingMemoryValidationError("experience_weight must be in [0, 10]")
+        if not 0 <= self.anchor_weight <= 10:
+            raise CodingMemoryValidationError("anchor_weight must be in [0, 10]")
+        if not 0 <= self.trust_weight <= 1:
+            raise CodingMemoryValidationError("trust_weight must be in [0, 1]")
+        if not 0 <= self.admission_similarity <= 1:
+            raise CodingMemoryValidationError("admission_similarity must be in [0, 1]")
+        if not 0 <= self.stale_penalty <= 1:
+            raise CodingMemoryValidationError("stale_penalty must be in [0, 1]")
+        if any(
+            type(value) is not int or not lower <= value <= upper
+            for value, lower, upper in (
+                (self.chunk_size, 200, 8000),
+                (self.chunk_overlap, 0, 2000),
+                (self.skeleton_depth, 0, 40),
+                (self.relation_window, 0, 20),
+            )
+        ):
+            raise CodingMemoryValidationError("policy integer outside allowed bounds")
+        if self.chunk_overlap >= self.chunk_size:
+            raise CodingMemoryValidationError("chunk_overlap must be smaller than chunk_size")
         if not 0 <= self.score_floor_ratio <= 1:
             raise CodingMemoryValidationError("score_floor_ratio must be in [0, 1]")
         bounds = (

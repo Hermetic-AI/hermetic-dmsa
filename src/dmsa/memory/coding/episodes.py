@@ -18,12 +18,8 @@ _VALIDATION_RE = re.compile(
 _NEGATED_RE = re.compile(
     r"(?:未|没有|并不|尚未|并未)(?:全部)?通过|\b(?:FAILED|failing|did not work)\b", re.I
 )
-_FAILURE_RE = re.compile(
-    r"Traceback|AssertionError|\bFAILED\b|未通过|测试失败|失败|报错", re.I
-)
-_ROOT_CAUSE_RE = re.compile(
-    r"(?:根因|原因|因为|导致|问题在于|due to|root cause|because)", re.I
-)
+_FAILURE_RE = re.compile(r"Traceback|AssertionError|\bFAILED\b|未通过|测试失败|失败|报错", re.I)
+_ROOT_CAUSE_RE = re.compile(r"(?:根因|原因|因为|导致|问题在于|due to|root cause|because)", re.I)
 
 
 @dataclass(frozen=True)
@@ -117,7 +113,8 @@ def build_episode(messages: tuple[SourceMessage, ...]) -> EpisodeCard | None:
         outcome = "unknown"
     paths = tuple(
         dict.fromkeys(
-            (patch_path, *PATH_RE.findall(f"{root_cause}\n{symptom}")) if patch_path
+            (patch_path, *PATH_RE.findall(f"{root_cause}\n{symptom}"))
+            if patch_path
             else PATH_RE.findall(f"{root_cause}\n{symptom}")
         )
     )

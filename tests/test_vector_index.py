@@ -1,4 +1,3 @@
-# ruff: noqa: RUF002
 """可选向量索引的 scope、恢复与故障契约测试。"""
 
 from __future__ import annotations
@@ -210,6 +209,25 @@ def test_qdrant_adapter_filters_scope_and_rechecks_sql(tmp_path, monkeypatch) ->
     assert "alpha evidence" in hits[0].content
     memory.delete_scope("alice")
     assert len(remote.points) == 1
+    memory.close()
+
+
+def test_hybrid_search_uses_remote_index_candidates(tmp_path) -> None:
+    """配置远端向量索引时, 混合检索按远端候选复算相似度并参与融合."""
+    index = FakeIndex()
+    memory = CodingMemory(
+        tmp_path / "memory.db",
+        Embedder(),
+        SearchPolicy(exact_weight=0, sparse_weight=0, neighbor_window=0),
+        vector_index=index,
+    )
+    memory.add("a", "alice", "s1", [SourceMessage("tool", "alpha evidence")])
+
+    result = memory.search_hybrid("semantic query", "alice", 3)
+
+    assert result.dense_available is True
+    assert "dense" in result.channels
+    assert result.hits
     memory.close()
 
 

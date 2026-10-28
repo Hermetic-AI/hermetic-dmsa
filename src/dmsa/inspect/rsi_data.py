@@ -1,4 +1,3 @@
-# ruff: noqa: D415, RUF002
 """只读展示统一 DMSA 的 RSI 运行轨迹与策略版本。"""
 
 from __future__ import annotations

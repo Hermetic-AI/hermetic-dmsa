@@ -17,7 +17,6 @@ import threading
 from typing import Any, TextIO
 
 from dmsa.errors import DMSAError
-from dmsa.observability import get_logger
 from dmsa.mcp_server.protocol import (
     JsonRpcErrorCode,
     JsonRpcRequest,
@@ -26,6 +25,7 @@ from dmsa.mcp_server.protocol import (
     parse_request,
 )
 from dmsa.mcp_server.tools import DMSA_TOOLS, TOOL_SCHEMAS
+from dmsa.observability import get_logger
 
 __all__ = ["MCPServer"]
 
@@ -62,6 +62,7 @@ class MCPServer:
         stdin: TextIO | None = None,
         stdout: TextIO | None = None,
     ) -> None:
+        """初始化 MCP server, 绑定内存层与 IO 流并注册默认工具处理器。"""
         self._memory = memory_layer
         self._tool_schemas = tool_schemas or TOOL_SCHEMAS
         self._stdin = stdin or sys.stdin
@@ -114,9 +115,7 @@ class MCPServer:
             request_id=request.id,
         )
 
-    async def _handle_tools_call(
-        self, request: JsonRpcRequest
-    ) -> dict[str, Any]:
+    async def _handle_tools_call(self, request: JsonRpcRequest) -> dict[str, Any]:
         """处理 tools/call。"""
         params = request.params
         tool_name = params.get("name", "")
@@ -169,9 +168,7 @@ class MCPServer:
             finally:
                 loop.call_soon_threadsafe(queue.put_nowait, None)
 
-        threading.Thread(
-            target=_pump_stdin, daemon=True, name="dmsa-stdin-pump"
-        ).start()
+        threading.Thread(target=_pump_stdin, daemon=True, name="dmsa-stdin-pump").start()
 
         while True:
             line = await queue.get()

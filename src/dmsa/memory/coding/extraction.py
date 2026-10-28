@@ -5,7 +5,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from dmsa.memory.coding.models import SourceMessage
+from dmsa.memory.coding.code_anchors import CodeAnchor, extract_anchors
+from dmsa.memory.coding.models import CodingMemoryValidationError, SourceMessage
 
 CHUNK_SIZE = 1800
 OVERLAP = 160
@@ -48,18 +49,27 @@ class Chunk:
     paths: tuple[str, ...]
     symbols: tuple[str, ...]
     outcome: str
+    anchors: tuple[CodeAnchor, ...] = ()
 
 
-def extract(messages: tuple[SourceMessage, ...]) -> list[Chunk]:
-    """按消息与固定字符窗口切片, 保留原文偏移和保守结果标签。."""
+def extract(
+    messages: tuple[SourceMessage, ...],
+    chunk_size: int = CHUNK_SIZE,
+    overlap: int = OVERLAP,
+) -> list[Chunk]:
+    """按消息与字符窗口切片, 保留原文偏移和保守结果标签."""
+    if type(chunk_size) is not int or chunk_size < 200:
+        raise CodingMemoryValidationError("chunk_size must be an integer of at least 200")
+    if type(overlap) is not int or overlap < 0 or overlap >= chunk_size:
+        raise CodingMemoryValidationError("overlap must be smaller than chunk_size")
     chunks: list[Chunk] = []
     for index, message in enumerate(messages):
         content = message.content
         start = 0
         while start < len(content):
-            end = min(start + CHUNK_SIZE, len(content))
+            end = min(start + chunk_size, len(content))
             if end < len(content):
-                boundary = content.rfind("\n", start + CHUNK_SIZE // 2, end)
+                boundary = content.rfind("\n", start + chunk_size // 2, end)
                 if boundary > start:
                     end = boundary + 1
             text = content[start:end]
@@ -75,15 +85,12 @@ def extract(messages: tuple[SourceMessage, ...]) -> list[Chunk]:
                     end,
                     text,
                     tuple(dict.fromkeys(PATH_RE.findall(text))),
-                    tuple(
-                        dict.fromkeys(
-                            (*SYMBOL_RE.findall(text), *DEFINITION_RE.findall(text))
-                        )
-                    ),
+                    tuple(dict.fromkeys((*SYMBOL_RE.findall(text), *DEFINITION_RE.findall(text)))),
                     outcome,
+                    extract_anchors(text),
                 )
             )
             if end == len(content):
                 break
-            start = max(start + 1, end - OVERLAP)
+            start = max(start + 1, end - overlap)
     return chunks

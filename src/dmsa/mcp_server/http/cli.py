@@ -1,4 +1,3 @@
-# ruff: noqa: RUF002, D415
 """Coding Memory HTTP CLI。"""
 
 from __future__ import annotations

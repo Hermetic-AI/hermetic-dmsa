@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import time
 from collections.abc import Iterable
 
+from dmsa.memory.coding.anchor_store import insert_anchors, insert_relations
 from dmsa.memory.coding.episode_store import (
     drop_other_episodes,
     insert_episode,
@@ -20,6 +22,8 @@ from dmsa.memory.coding.models import (
     SourceMessage,
 )
 from dmsa.memory.coding.schema import scope_token
+from dmsa.memory.coding.teams import record_author, register_conflict
+from dmsa.memory.coding.trust_store import ensure_stats
 
 
 def existing_revision(
@@ -47,8 +51,15 @@ def publish_request(
     chunks: Iterable[Chunk],
     vectors: list[tuple[float, ...]],
     fingerprint: str | None,
+    *,
+    author: str = "",
+    rival: tuple[str, float] | None = None,
 ) -> int:
-    """在已开启的事务内发布 request、原文、切片、向量、经验卡和 revision."""
+    """在已开启的事务内发布 request、原文、切片、向量、经验卡和 revision.
+
+    ``author`` 记录本次写入的作者, 供团队作用域判定写冲突;
+    ``rival`` 是门控判定的对手切片与相似度, 非空时在同一个事务里登记冲突.
+    """
     old = existing_revision(db, request_id, user_id, digest)
     if old is not None:
         return old
@@ -59,6 +70,9 @@ def publish_request(
     db.execute(
         "INSERT INTO requests VALUES(?,?,?,?,?)",
         (user_id, request_id, session_id, digest, revision),
+    )
+    created_at = next((m.timestamp for m in messages if m.timestamp is not None), None) or int(
+        time.time()
     )
     for ordinal, message in enumerate(messages):
         mid = message_id(user_id, request_id, ordinal)
@@ -75,6 +89,7 @@ def publish_request(
                 message.content,
             ),
         )
+    written: list[tuple[str, str]] = []
     for chunk_index, chunk in enumerate(chunks):
         mid = message_id(user_id, request_id, chunk.message_index)
         cid = chunk_id(mid, chunk.start, chunk.end)
@@ -98,8 +113,13 @@ def publish_request(
                 scope_token(user_id),
             ),
         )
+        written.append((cid, chunk.text))
+        record_author(db, user_id, cid, author)
         for term in {value.lower() for value in (*chunk.paths, *chunk.symbols)}:
             db.execute("INSERT INTO exact_terms VALUES(?,?,?)", (user_id, cid, term))
+        ensure_stats(db, user_id, cid, revision=revision, created_at=created_at)
+        insert_anchors(db, user_id, cid, chunk.anchors)
+        insert_relations(db, user_id, cid, chunk.anchors)
         if fingerprint is not None:
             vector = vectors[chunk_index]
             db.execute(
@@ -116,13 +136,11 @@ def publish_request(
         "DO UPDATE SET epoch=excluded.epoch",
         (user_id, revision),
     )
-    db.execute(
-        "UPDATE metadata SET value=CAST(value AS INTEGER)+1 WHERE key='corpus_generation'"
-    )
+    db.execute("UPDATE metadata SET value=CAST(value AS INTEGER)+1 WHERE key='corpus_generation'")
+    if rival is not None:
+        register_conflict(db, user_id, author, tuple(written), rival[0], rival[1])
     if episode is not None:
-        episode_id = insert_episode(
-            db, user_id, request_id, session_id, len(messages), episode
-        )
+        episode_id = insert_episode(db, user_id, request_id, session_id, len(messages), episode)
         drop_other_episodes(db, user_id, session_id, episode_id)
         if episode.outcome == "reported_success":
             propagate_outcome(db, user_id, session_id, episode.patch_path)

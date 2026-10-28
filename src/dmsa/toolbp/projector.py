@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 import re
-from typing import Iterable, Mapping
+from collections.abc import Mapping
 
 from dmsa.errors import (
     ProjectionRollbackError,
@@ -53,6 +53,7 @@ class ToolBPEngine:
     """
 
     def __init__(self, *, critic: ToolCallCritic | None = None) -> None:
+        """初始化反向传播引擎, 缺省使用内置工具调用批评器。"""
         self._critic = critic or ToolCallCritic()
 
     def project(
@@ -170,7 +171,9 @@ class ToolBPEngine:
         text_lower = feedback.feedback_text.lower()
 
         # 启发式 1: format / schema 错误 → 找相关 property
-        if any(kw in text_lower for kw in ("format", "schema", "类型", "格式", "parse", "validation")):
+        if any(
+            kw in text_lower for kw in ("format", "schema", "类型", "格式", "parse", "validation")
+        ):
             target = self._infer_target_property(root, feedback.feedback_text)
             if target is not None:
                 ops.append(
@@ -186,9 +189,7 @@ class ToolBPEngine:
         if any(kw in text_lower for kw in ("required", "必填", "missing field")):
             target = self._infer_target_property(root, feedback.feedback_text)
             if target is not None:
-                ops.append(
-                    UpdateRequiredOp(field_path=target, required=True)
-                )
+                ops.append(UpdateRequiredOp(field_path=target, required=True))
 
         return ops
 

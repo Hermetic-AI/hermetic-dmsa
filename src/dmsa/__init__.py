@@ -23,15 +23,15 @@ from dmsa.errors import (
 
 # 版本号（由 setuptools_scm 从 git tag 自动生成；fallback 在 _version.py）
 try:
-    from dmsa._version import __version__  # type: ignore[import-not-found]
+    from dmsa._version import __version__
 except ImportError:  # pragma: no cover - 未安装时（源码布局）
     __version__ = "0.1.0.dev0"
 
 # 公共 API 导出（具体实现在子模块完成后再补）
 __all__ = [
-    "__version__",
     "DMSAConfig",
-    "load_config",
     "DMSAError",
     "ErrorCode",
+    "__version__",
+    "load_config",
 ]

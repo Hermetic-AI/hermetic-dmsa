@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from dmsa.observability.logging import get_logger, JsonLogger
+from dmsa.observability.logging import JsonLogger, get_logger
 from dmsa.observability.metrics import (
     Counter,
     Histogram,
@@ -15,13 +15,13 @@ from dmsa.observability.metrics import (
 from dmsa.observability.trace import TraceSpan, get_current_span, start_span
 
 __all__ = [
-    "get_logger",
-    "JsonLogger",
     "Counter",
     "Histogram",
+    "JsonLogger",
     "MetricsRegistry",
-    "get_registry",
     "TraceSpan",
     "get_current_span",
+    "get_logger",
+    "get_registry",
     "start_span",
 ]

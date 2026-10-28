@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-import time
-
 import pytest
-from pmd import ContentType, EdgeType, PromptContext
 
-from dmsa.errors import LineageNotFoundError, MemoryLayerError, MissingParentError
+from dmsa.errors import (
+    InvalidPromptContextError,
+    LineageNotFoundError,
+    MemoryLayerError,
+    MissingParentError,
+)
 from dmsa.memory import (
     LineageDirection,
     LineageQuery,
@@ -16,8 +18,6 @@ from dmsa.memory import (
     from_dict,
     to_dict,
 )
-from dmsa.types import MemoryLayerConfig
-
 
 # ============================================================================
 # 基础
@@ -50,13 +50,13 @@ def test_create_prompt_context_basic() -> None:
 
 def test_create_prompt_context_requires_some_text() -> None:
     """system_prompt 和 user_prompt 都为空时抛错。"""
-    with pytest.raises(Exception):  # InvalidPromptContextError
+    with pytest.raises(InvalidPromptContextError, match="must be non-empty"):
         create_prompt_context()
 
 
 def test_create_prompt_context_validates_temperature() -> None:
     """温度必须在 [0, 2]。"""
-    with pytest.raises(Exception):
+    with pytest.raises(InvalidPromptContextError, match=r"temperature must be in \[0, 2\]"):
         create_prompt_context(system_prompt="x", temperature=3.0)
 
 
