@@ -28,8 +28,12 @@ def main() -> None:
                 "session-2",
                 [SourceMessage("assistant", "independent target evidence")],
             )
-            baseline = RetrievalPolicy(SearchPolicy(candidate_limit=1))
-            candidate = RetrievalPolicy(SearchPolicy(candidate_limit=10))
+            baseline = RetrievalPolicy(
+                SearchPolicy(candidate_limit=1, max_chars=12000, max_tokens=12000)
+            )
+            candidate = RetrievalPolicy(
+                SearchPolicy(candidate_limit=10, max_chars=12000, max_tokens=12000)
+            )
             relevant = memory.search("alpha target", "demo-user", 2, candidate.search)[1].id
             report = run_replay(
                 memory,
