@@ -71,6 +71,36 @@ def test_qwen_adapter_uses_native_schema_and_query_document_types() -> None:
     client.close()
 
 
+def test_qwen_adapter_accepts_flash_index_field() -> None:
+    """flash 版模型返回 index 字段而不是 text_index, 两种都要能复原顺序."""
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        request_body = json.loads(request.content)
+        texts = request_body["input"]["texts"]
+        return httpx.Response(
+            200,
+            json={
+                "output": {
+                    "embeddings": [
+                        {"index": index, "type": "embedding", "embedding": [float(index + 1)] * 256}
+                        for index in reversed(range(len(texts)))
+                    ]
+                }
+            },
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(respond))
+    embedder = QwenTextEmbedding(
+        "https://embedding.example/api",
+        "test-key",
+        256,
+        model="qwen3.7-text-embedding-flash",
+        client=client,
+    )
+    assert embedder.embed_batch(["first", "second"]) == [[1.0] * 256, [2.0] * 256]
+    client.close()
+
+
 def test_qwen_adapter_chunks_batches_to_provider_limit() -> None:
     """单次请求最多发送 20 条，多个批次仍返回完整顺序。"""
     batch_sizes: list[int] = []

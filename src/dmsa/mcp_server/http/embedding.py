@@ -18,6 +18,15 @@ _QWEN_MODELS = frozenset({"qwen3.7-text-embedding", "qwen3.7-text-embedding-flas
 _DASHSCOPE_BATCH_SIZE = 20
 
 
+def _row_index(row: dict[str, Any]) -> int | None:
+    """读取单条向量结果的序号字段, 兼容两个模型版本的字段名."""
+    for key in ("text_index", "index"):
+        value = row.get(key)
+        if type(value) is int:
+            return value
+    return None
+
+
 class QwenTextEmbedding:
     """调用 DashScope 原生端点的 Qwen3.7 文本向量适配器。"""
 
@@ -91,14 +100,17 @@ class QwenTextEmbedding:
                 response.raise_for_status()
                 payload = response.json()
                 rows = payload["output"]["embeddings"]
-                indices = [row["text_index"] for row in rows]
-                if (
-                    len(rows) != len(batch)
-                    or any(type(index) is not int for index in indices)
-                    or sorted(indices) != list(range(len(batch)))
-                ):
+                # 两个 Qwen 模型版本返回的序号字段名不同: 旧版是 text_index,
+                # flash 版是 index。两种都要认, 否则会因取不到字段而整批失败。
+                order: list[int] = []
+                for row in rows:
+                    index = _row_index(row)
+                    if index is None:
+                        raise ValueError("invalid embedding response indices")
+                    order.append(index)
+                if len(rows) != len(batch) or sorted(order) != list(range(len(batch))):
                     raise ValueError("invalid embedding response indices")
-                rows.sort(key=lambda row: row["text_index"])
+                rows.sort(key=lambda row: _row_index(row) or 0)
                 vectors = [[float(value) for value in row["embedding"]] for row in rows]
                 if any(
                     len(vector) != self.dimension
