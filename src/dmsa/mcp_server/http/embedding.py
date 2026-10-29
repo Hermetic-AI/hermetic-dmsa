@@ -22,11 +22,12 @@ _DASHSCOPE_BATCH_SIZE = 20
 # 整条写入失败, 因此适配器自己退避重试, 不把 429 抛给调用方。
 _RETRYABLE_STATUS = frozenset({408, 425, 429, 500, 502, 503, 504})
 _EMBED_RETRY_ATTEMPTS = 6
-_EMBED_RETRY_BASE_DELAY = 1.0
-_EMBED_RETRY_MAX_DELAY = 20.0
-# 出站请求并发闸门: 平台侧 Add 并发上限是 16, 每条 Add 又有多个批次,
-# 不设闸门会把供应商配额瞬间打满并触发连锁限流。
-_EMBED_MAX_CONCURRENCY = 4
+_EMBED_RETRY_BASE_DELAY = 0.5
+_EMBED_RETRY_MAX_DELAY = 8.0
+# 出站请求并发闸门: 实测供应商在 16 路并发、每批 20 条 1800 字符(约 4900 token)
+# 的平台真实形态下 96/96 全部成功, 单请求也没有 token 上限(30000 token 仍可过),
+# 因此闸门只用来挡住异常突发, 收得太紧反而会把一批写入拖成分钟级。
+_EMBED_MAX_CONCURRENCY = 12
 
 
 def _row_index(row: dict[str, Any]) -> int | None:

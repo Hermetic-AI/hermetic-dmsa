@@ -116,5 +116,5 @@ def test_concurrent_calls_are_gated() -> None:
         thread.start()
     for thread in threads:
         thread.join()
-    assert active["peak"] <= 4, "出站并发不得超过闸门上限"
+    assert active["peak"] <= 12, "出站并发不得超过闸门上限"
     embedder.close()
