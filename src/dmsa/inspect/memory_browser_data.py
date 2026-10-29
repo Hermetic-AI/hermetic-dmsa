@@ -15,6 +15,29 @@ MAX_SCAN_ROWS = 20000
 PAGE_SIZE = 40
 SORTS = {"newest", "oldest", "relevance", "scope"}
 
+SELECT_COLUMNS = (
+    "c.*, COALESCE(m.ordinal,c.ordinal) AS message_index, m.timestamp, "
+    "m.content AS source_content, r.revision, v.fingerprint, v.dimension"
+)
+JOIN_BASE = (
+    "FROM chunks c LEFT JOIN messages m ON m.id=c.message_id "
+    "LEFT JOIN requests r ON r.user_id=c.user_id AND r.request_id=c.request_id "
+    "LEFT JOIN vectors v ON v.chunk_id=c.id AND v.user_id=c.user_id"
+)
+# 可由 SQL 直接排序分页的顺序；relevance 需按词命中数打分，只能扫描后排序。
+_ORDER_SQL = {
+    "newest": "COALESCE(m.timestamp,-1) DESC, c.id DESC",
+    "oldest": "COALESCE(m.timestamp,-1) ASC, c.id ASC",
+    "scope": "c.user_id ASC, c.request_id ASC, c.start ASC, c.ordinal ASC",
+}
+# 依赖派生文本槽位（kind/facet）或需要一次性取全量（all）的查询无法下推到 SQL 分页。
+_SCAN_ONLY_KEYS = ("kind", "facet", "all")
+
+
+def _requires_full_scan(query: dict[str, list[str]]) -> bool:
+    """判断本次查询是否包含必须扫描后过滤的条件。"""
+    return any(query.get(key, [""])[0].strip() for key in _SCAN_ONLY_KEYS)
+
 
 def _connect_readonly(path: Path) -> sqlite3.Connection:
     """以 SQLite URI read-only 模式打开数据文件。"""
@@ -184,19 +207,39 @@ def read_records(path: Path, query: dict[str, list[str]]) -> dict[str, Any]:
     """筛选来源记录，按稳定顺序分页并返回完整 provenance。"""
     clauses, values = _filters(query)
     where = " WHERE " + " AND ".join(clauses) if clauses else ""
+    sort = query.get("sort", ["newest"])[0]
+    if sort not in SORTS:
+        raise ValueError("unsupported sort order")
+    try:
+        page = max(1, int(query.get("page", ["1"])[0]))
+    except ValueError:
+        page = 1
+    order_sql = _ORDER_SQL.get(sort)
+    if order_sql is not None and not _requires_full_scan(query):
+        with closing(_connect_readonly(path)) as db:
+            total = int(db.execute(f"SELECT count(*) {JOIN_BASE}{where}", values).fetchone()[0])
+            rows = db.execute(
+                f"SELECT {SELECT_COLUMNS} {JOIN_BASE}{where} ORDER BY {order_sql} LIMIT ? OFFSET ?",
+                (*values, PAGE_SIZE, (page - 1) * PAGE_SIZE),
+            ).fetchall()
+        return {
+            "records": [_record(row) for row in rows],
+            "total": total,
+            "page": page,
+            "page_size": PAGE_SIZE,
+            "pages": max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE),
+        }
     sql = (
-        "SELECT c.*, COALESCE(m.ordinal,c.ordinal) AS message_index, m.timestamp, "
-        "m.content AS source_content, r.revision, v.fingerprint, v.dimension "
-        "FROM chunks c LEFT JOIN messages m ON m.id=c.message_id "
-        "LEFT JOIN requests r ON r.user_id=c.user_id AND r.request_id=c.request_id "
-        "LEFT JOIN vectors v ON v.chunk_id=c.id AND v.user_id=c.user_id"
-        + where
-        + " ORDER BY c.user_id, c.request_id, c.ordinal, c.start LIMIT ?"
+        f"SELECT {SELECT_COLUMNS} {JOIN_BASE}{where} "
+        "ORDER BY c.user_id, c.request_id, c.ordinal, c.start LIMIT ?"
     )
     with closing(_connect_readonly(path)) as db:
         rows = db.execute(sql, (*values, MAX_SCAN_ROWS + 1)).fetchall()
     if len(rows) > MAX_SCAN_ROWS:
-        raise ValueError("too many records to scan; add a scope or other filter")
+        raise ValueError(
+            "too many records to scan; add a scope or other filter "
+            "(该筛选需扫描全部记忆，请选择单个 scope 或缩小时间范围)"
+        )
     records = [_record(row) for row in rows]
     kind = query.get("kind", [""])[0]
     if kind:
@@ -219,9 +262,6 @@ def read_records(path: Path, query: dict[str, list[str]]) -> dict[str, Any]:
             "has_condition": "preconditions",
         }[facet]
         records = [row for row in records if row[field]]
-    sort = query.get("sort", ["newest"])[0]
-    if sort not in SORTS:
-        raise ValueError("unsupported sort order")
     if sort == "newest":
         records.sort(key=lambda row: (row["timestamp"] or -1, row["id"]), reverse=True)
     elif sort == "oldest":
@@ -234,10 +274,6 @@ def read_records(path: Path, query: dict[str, list[str]]) -> dict[str, Any]:
             key=lambda row: sum(term in row["text"].lower() for term in terms), reverse=True
         )
     total = len(records)
-    try:
-        page = max(1, int(query.get("page", ["1"])[0]))
-    except ValueError:
-        page = 1
     start = (page - 1) * PAGE_SIZE
     selected = records if query.get("all", [""])[0] == "1" else records[start : start + PAGE_SIZE]
     return {

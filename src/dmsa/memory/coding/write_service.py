@@ -31,6 +31,7 @@ from dmsa.memory.coding.models import (
 )
 from dmsa.memory.coding.retrieval import CodingRetriever
 from dmsa.memory.coding.storage import CodingStore
+from dmsa.observability import observe_count
 
 
 class WriteService:
@@ -86,6 +87,8 @@ class WriteService:
             decision = AdmissionDecision(True, REASON_IDEMPOTENT, 1.0)
             return AdmissionResult(previous, decision)
         chunks = extract(parsed, selected.chunk_size, selected.chunk_overlap)
+        # 分块数量决定 embedding 批量大小，是写入侧唯一需要看见的规模量。
+        observe_count("dmsa.write.chunks", len(chunks))
         with self._operation():
             verdict = evaluate(
                 self.store.db,

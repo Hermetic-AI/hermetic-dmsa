@@ -17,6 +17,7 @@ from dmsa.memory.coding.models import CodingMemoryError, SearchHit, SearchPolicy
 from dmsa.memory.coding.retrieval import CodingRetriever
 from dmsa.memory.coding.storage import CodingStore
 from dmsa.memory.coding.temporal import AsOf
+from dmsa.observability import observe_count, timed
 
 # 时序检索时远端向量索引无法按时间过滤, 因此多取一些候选再按坐标收敛.
 AS_OF_DENSE_WIDENING = 4
@@ -41,7 +42,24 @@ def run_search(
     top_k: int,
     as_of: AsOf | None = None,
 ) -> list[SearchHit]:
-    """执行一次检索并返回装好包的证据."""
+    """执行一次检索，并记录端到端延迟与交付条数。"""
+    with timed("dmsa.search.latency"):
+        hits = _run_search(store, retriever, policy, query, scope, top_k, as_of)
+    # 交付条数直接对应平台写死的 top_k 契约，比排序质量更致命，必须可见。
+    observe_count("dmsa.search.returned", len(hits))
+    return hits
+
+
+def _run_search(
+    store: CodingStore,
+    retriever: CodingRetriever,
+    policy: SearchPolicy,
+    query: str,
+    scope: str,
+    top_k: int,
+    as_of: AsOf | None = None,
+) -> list[SearchHit]:
+    """检索主流程本体: 库内召回 → 外部向量化 → 稠密通道 → 调分装包."""
     with operation(store):
         ranks, features = retriever.collect_candidates(query, scope, policy, as_of)
     vector = retriever.query_vector(query)

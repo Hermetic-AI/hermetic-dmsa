@@ -57,8 +57,11 @@ CREATE TABLE IF NOT EXISTS requests(
             END;
             CREATE TABLE IF NOT EXISTS vectors(
               chunk_id TEXT PRIMARY KEY, user_id TEXT NOT NULL,
-              fingerprint TEXT NOT NULL, dimension INTEGER NOT NULL, vector TEXT NOT NULL);
+              fingerprint TEXT NOT NULL, dimension INTEGER NOT NULL, vector TEXT NOT NULL,
+              text_hash TEXT);
             CREATE INDEX IF NOT EXISTS vectors_scope ON vectors(user_id, fingerprint);
+            CREATE INDEX IF NOT EXISTS vectors_content ON vectors(fingerprint, text_hash)
+              WHERE text_hash IS NOT NULL;
             CREATE TABLE IF NOT EXISTS exact_terms(
               user_id TEXT NOT NULL, chunk_id TEXT NOT NULL, term TEXT NOT NULL,
               PRIMARY KEY(user_id, chunk_id, term));
@@ -121,6 +124,14 @@ CREATE TABLE IF NOT EXISTS requests(
 )
 
 
+def _vector_hash_column(db: sqlite3.Connection) -> str:
+    """为既有 vectors 表补 text_hash 列; 新库由建表语句直接给出."""
+    columns = {str(row[1]) for row in db.execute("PRAGMA table_info(vectors)")}
+    if not columns or "text_hash" in columns:
+        return ""
+    return "ALTER TABLE vectors ADD COLUMN text_hash TEXT;"
+
+
 def _fts_uses_trigram(db: sqlite3.Connection) -> bool:
     """判断既有虚表是否已是 trigram 分词; 不存在时视为无需迁移."""
     row = db.execute("SELECT sql FROM sqlite_master WHERE name='chunk_fts'").fetchone()
@@ -132,6 +143,7 @@ def initialize(db: sqlite3.Connection) -> None:
     row = db.execute("SELECT sql FROM sqlite_master WHERE name='chunks'").fetchone()
     legacy = row is not None and "VIRTUAL TABLE" in row[0].upper()
     prefix = "ALTER TABLE chunks RENAME TO legacy_chunks;" if legacy else ""
+    prefix += _vector_hash_column(db)
     suffix = ""
     if legacy:
         suffix = (

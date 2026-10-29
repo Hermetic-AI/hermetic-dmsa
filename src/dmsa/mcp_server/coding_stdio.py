@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import sys
 import threading
@@ -22,6 +23,9 @@ from dmsa.mcp_server.protocol import (
     parse_request,
 )
 from dmsa.memory import CodingMemory
+from dmsa.observability import get_logger, setup_logging
+
+_logger = get_logger("dmsa.mcp_server.coding_stdio")
 
 
 async def serve(server: CodingMemoryMCPServer, stdin: TextIO, stdout: TextIO) -> None:
@@ -41,6 +45,11 @@ async def serve(server: CodingMemoryMCPServer, stdin: TextIO, stdout: TextIO) ->
         try:
             response = await server.handle(parse_request(line))
         except Exception as exc:
+            _logger.warning(
+                "stdio request rejected",
+                error_type=type(exc).__name__,
+                reason=str(exc)[:200],
+            )
             response = make_error_response(JsonRpcErrorCode.INVALID_REQUEST.value, str(exc))
         if response is not None:
             stdout.write(json.dumps(response, ensure_ascii=False) + "\n")
@@ -49,6 +58,8 @@ async def serve(server: CodingMemoryMCPServer, stdin: TextIO, stdout: TextIO) ->
 
 def run_server() -> int:
     """以 MCP stdio 模式运行项目级 CodingMemory."""
+    # stdout 是 JSON-RPC 通道，日志只能走 stderr（configure_root 的默认目标）。
+    level = setup_logging()
     if hasattr(sys.stdin, "reconfigure"):
         sys.stdin.reconfigure(encoding="utf-8")
     if hasattr(sys.stdout, "reconfigure"):
@@ -60,10 +71,20 @@ def run_server() -> int:
 
     remote = configured_remote(scope)
     if remote is not None:
+        _logger.info(
+            "coding memory stdio started",
+            mode="remote",
+            scope=scope,
+            log_level=logging.getLevelName(level),
+        )
         try:
             asyncio.run(remote.run_stdio(sys.stdin, sys.stdout))
+        except Exception:
+            _logger.exception("remote coding memory stdio crashed")
+            raise
         finally:
             remote.close()
+            _logger.info("coding memory stdio stopped", mode="remote", scope=scope)
         return 0
     if str(path) != ":memory:":
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -72,13 +93,30 @@ def run_server() -> int:
     if str(path) != ":memory:":
         try:
             rsi = IntegratedRSI(memory)
-        except Exception:
+        except Exception as exc:
+            _logger.warning(
+                "rsi disabled",
+                error_type=type(exc).__name__,
+                reason=str(exc)[:200],
+            )
             rsi = None
     server = CodingMemoryMCPServer(memory, scope, path, rsi)
+    _logger.info(
+        "coding memory stdio started",
+        mode="local",
+        scope=scope,
+        storage=str(path),
+        rsi=rsi is not None,
+        log_level=logging.getLevelName(level),
+    )
     try:
         asyncio.run(serve(server, sys.stdin, sys.stdout))
     except KeyboardInterrupt:
         return 0
+    except Exception:
+        _logger.exception("coding memory stdio crashed")
+        raise
     finally:
         memory.close()
+        _logger.info("coding memory stdio stopped", mode="local", scope=scope)
     return 0

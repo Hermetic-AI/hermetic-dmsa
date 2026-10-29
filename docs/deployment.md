@@ -32,6 +32,81 @@ no-new-privileges；仅 `/data` 和临时 `/tmp` 可写。无需在镜像中放�
 检索到指定来源；成功退出 0，失败退出 1，仅记录固定消息，不输出 key 或原文。
 反复运行默认 smoke 是幂等操作，会保留一条测试记录和独立测试 scope。
 
+## 日志与故障定位
+
+服务日志默认开启，走进程 stderr，因此 `docker logs` 直接可见，容器内不需要可写日志目录：
+
+```bash
+docker compose logs --since 5m memory
+docker compose logs -f memory | grep -F 'request completed'
+```
+
+启动第一件事是打印一条生效配置摘要（不含任何密钥）：
+
+```text
+2026-10-29 10:06:19.765 | INFO     | dmsa.mcp_server.http.cli:_log_startup:149 | coding memory http listening url=http://127.0.0.1:8000 profile=sparse-dev storage=/data/coding.sqlite3 dimension=1024 embedding_model=disabled vector_index=sqlite rsi_enabled=true rsi_models=false log_level=INFO log_format=text
+```
+
+每条日志固定包含毫秒时间戳、级别、`logger:函数名:行号`、消息本体和结构化字段；
+请求链路上的行还带 `trace=<id>`，与响应头 `X-Request-ID` 一致，可直接把某一次调用在
+调用方与服务方两侧串起来。上游若自带 `X-Request-ID` / `traceparent`，服务沿用该值。
+
+| 变量 | 默认 | 说明 |
+| --- | --- | --- |
+| `DMSA_LOG_LEVEL` | `INFO` | `TRACE`/`DEBUG`/`INFO`/`WARNING`/`ERROR`/`OFF`；`DEBUG` 追加成功请求与工具调用明细 |
+| `DMSA_LOG_FORMAT` | `text` | `json` 供日志采集器解析，字段见 [usage](USAGE.md) |
+| `DMSA_LOG_COLOR` | `auto` | 仅 TTY 上色；`docker logs` 非 TTY 因此保持纯文本 |
+| `DMSA_LOG_FILE` | 空 | 本机排障可加滚动文件；只读根文件系统下留空 |
+
+`compose.yaml` 与 `deploy/compose.competition.yaml` 已透传前三项。级别调成 `DEBUG`
+只会多打明细行，不会改写数据。
+
+日志与访问日志的分工：uvicorn 继续输出 `GET /health ...` 访问行；中间件只在
+`WARNING`/`ERROR`（4xx/5xx）时补一条带 trace 与 `duration_ms` 的 `request completed`，
+2xx 降为 `DEBUG` 避免与访问行重复。健康检查固定走 `DEBUG`，每 10 秒一次的探针不会
+淹没日志。认证失败、请求体不合法、数据库故障与 RSI 失败各自有独立告警行，但只记录
+状态码、字段数量与错误类型，不落请求原文，也不落 API key。
+
+stdio 容器（`agent-mcp` profile）的 stdout 是 JSON-RPC 通道，日志同样只写 stderr，
+协议帧不会被污染。
+
+## 指标与状态出口
+
+日志回答"某一次调用发生了什么"，指标回答"这段时间整体是什么样"。两者都从同一个进程出来，
+容器里不需要额外的可写目录：
+
+```bash
+# 能力开关：嵌入/向量索引/RSI 是否真的生效（不含密钥与请求原文）
+docker compose exec -T memory python -c "import os,httpx as h;print(h.get('http://127.0.0.1:8000/status',headers={'Authorization':'Bearer '+os.environ['DMSA_MEMORY_API_KEY']},timeout=10).json())"
+
+# 进程内指标快照（重启清零）
+docker compose exec -T memory python -c "import os,httpx as h;print(h.get('http://127.0.0.1:8000/metrics',headers={'Authorization':'Bearer '+os.environ['DMSA_MEMORY_API_KEY']},timeout=10).json())"
+```
+
+镜像里没有 curl，所以用容器自带的 python 与 httpx；密钥只从环境变量取，不落命令行。
+服务端口绑在 `127.0.0.1` 时，也可以直接在宿主机上用 `.env` 里的 key 访问
+`http://127.0.0.1:8000/status`。
+
+`/status` 里最值得盯的三个字段：`embedding.enabled`（为 `false` 说明稠密通道整条都没接上）、
+`vector_index`（`sqlite` 表示没走 Qdrant）、`rsi.active_policy`（回放门禁当前生效的那一份）。
+
+`/metrics` 是 `{"counters": [...], "histograms": [...], "uptime_seconds": ...}`；直方图是
+累积分桶，额外给出 `min`/`max`/`mean`/`p50`/`p95`/`p99`，没有观测过时为 `null`。排障时按
+这条链路逐段切开延迟，就能判断时间花在哪儿：
+
+| 指标 | 含义 |
+| --- | --- |
+| `dmsa.http.latency` / `dmsa.http.<route>.latency` | 整请求与分路由耗时（健康检查不计入） |
+| `dmsa.http.requests.<2xx\|4xx\|5xx>` | 状态码族计数；`dmsa.http.health_checks` 单独计数 |
+| `dmsa.search.latency` / `dmsa.search.returned` | 检索主流程本体耗时与实际交付条数（对齐固定 `top_k` 契约） |
+| `dmsa.embedding.query.latency` / `.batch.latency` | 上游 embedding 调用耗时；配 `.calls` / `.failures` |
+| `dmsa.vector_index.latency` / `.returned` | Qdrant 调用耗时与返回 ID 数 |
+| `dmsa.span.<name>.latency` | `start_span` 埋点的内部段落耗时（聚合、投影、血缘等） |
+
+`dmsa.http.search.latency` 减去 `dmsa.search.latency` 就是认证、契约校验与装包序列化的开销；
+`dmsa.embedding.query.latency` 的 `p95` 直接决定检索 `top_k` 能不能按预算交满。分位数落在
+`+Inf` 桶时导出为 `null`，意思是超出量程，不要当成"很快"。
+
 ## 重启与数据恢复验收
 
 ```bash
@@ -64,7 +139,7 @@ docker compose exec -T memory dmsa-memory-smoke
 | DMSA_MEMORY_API_KEY | 非空服务密钥，无开发默认值 |
 | DMSA_EMBEDDING_BASE_URL | 显式 HTTPS embedding endpoint，不能含凭据、查询或 fragment |
 | DMSA_EMBEDDING_API_KEY | 非空 embedding 供应商密钥 |
-| DMSA_EMBEDDING_MODEL | `qwen3.7-text-embedding` 或 `text-embedding-v4` |
+| DMSA_EMBEDDING_MODEL | `qwen3.7-text-embedding-flash` 或 `text-embedding-v4` |
 | DMSA_EMBEDDING_DIMENSION | Qwen 默认 1024，且须匹配模型与 Qdrant collection |
 
 缺项会拒绝启动，不创建数据库、不监听端口，也不回退至 sparse。

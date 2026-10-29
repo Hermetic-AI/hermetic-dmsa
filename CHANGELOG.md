@@ -1,5 +1,28 @@
 ## 0.2.0.dev0 (development)
 
+- Logging is now on by default in every service and CLI entry point: colored single-line
+  text with millisecond timestamps, level, `logger:function:line`, trace ID and structured
+  fields, or JSON via `DMSA_LOG_FORMAT=json`. Levels/format/color/rolling file are driven by
+  `DMSA_LOG_*` or `--log-level/--log-format/--log-file`.
+- HTTP requests carry a trace ID (reusing upstream `X-Request-ID`/`traceparent`, echoed back
+  in the response) and log status plus duration; health probes and 2xx access lines stay quiet.
+- stdio MCP keeps stdout reserved for JSON-RPC and writes all logs to stderr.
+- Metrics are now observable: added authenticated `GET /metrics` (per-process snapshot) and
+  `GET /status` (embedding / vector index / RSI activation plus uptime). `Histogram.to_dict()`
+  adds `min`/`max`/`p50`/`p95`/`p99` and reports `null` instead of `0` when nothing was
+  observed.
+- Scale-shaped metrics moved to dedicated `COUNT_BUCKETS` (`dmsa.aggregate.samples`,
+  `dmsa.aggregate.clusters`, `dmsa.toolbp.ops_applied`); under the old latency buckets every
+  value ≥ 10 collapsed into `+Inf`, so those histograms carried no information.
+- Added latency instrumentation for the paths that actually get slow: embedding query/batch
+  calls, remote vector index, search pipeline (`dmsa.search.latency` and delivered
+  `dmsa.search.returned`), write chunk count, and per-route HTTP latency plus status counters.
+  `start_span` now exports `dmsa.span.<name>.latency` / `.failures` instead of dropping spans.
+- `Counter.inc()` on a negative amount raises `MetricValueError` (`DMSA-0003`, subclass of both
+  `DMSAError` and `ValueError`).
+- Remote-mode `dmsa_coding_memory_status` now calls `/status` (was `/health`), so it reports
+  whether embedding / vector index / RSI are actually active rather than bare liveness.
+- `dmsa-memory-smoke` keeps its fixed JSON stderr contract.
 - Added standalone PMD source packaging, hashed Docker dependencies, non-root image,
   persistent Compose deployment, mounted secrets, and Add/Search/restart smoke checks.
 - Competition startup now requires an explicit embedding model; missing configuration

@@ -65,7 +65,7 @@ no_memory arm 各项恒为 0（符合预期，不投喂证据）；sparse arm �
 ## 5. 不通/缺失的链路（如实报告）
 
 1. **GitHub 页面直连不通**：`github.com/blob` 与 `raw.githubusercontent.com` 均连接重置；仅 `api.github.com` 可用。已绕行获取 README_CN 全文。
-2. **hybrid / full arms 本地 CLI 跑不了**：`benchmarks.coding` 的 `--embedding-model` 仅接受 OpenAI 协议的 `text-embedding-v4`，且需要 `DMSA_BENCH_API_KEY`；本机只有 DashScope 原生端点的 `qwen3.7-text-embedding` 凭据（服务侧在用），无 OpenAI 兼容嵌入 key。→ dense 能力改由 §3 线上探针验证，但**四 arm 完整对照表本次无法产出**。
+2. **hybrid / full arms 本地 CLI 跑不了**：`benchmarks.coding` 的 `--embedding-model` 仅接受 OpenAI 协议的 `text-embedding-v4`，且需要 `DMSA_BENCH_API_KEY`；本机只有 DashScope 原生端点的 `qwen3.7-text-embedding-flash` 凭据（服务侧在用），无 OpenAI 兼容嵌入 key。→ dense 能力改由 §3 线上探针验证，但**四 arm 完整对照表本次无法产出**。
 3. **官方评测不可能在本机完成**：150 任务数据受保护不公开；无 AML Key、无官方 runner、服务未公网可达（现绑定 127.0.0.1）。本报告全部为本地代理指标。
 4. **工程结果指标空缺**：resolved/test_passed/localization 需要隔离 checkout 中真实执行测试的 agent 包装器（runbook 第 5 条），本次未搭建。
 

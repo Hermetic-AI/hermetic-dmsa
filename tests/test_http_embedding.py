@@ -57,7 +57,7 @@ def test_qwen_adapter_uses_native_schema_and_query_document_types() -> None:
         "https://embedding.example/api",
         "test-key",
         256,
-        model="qwen3.7-text-embedding",
+        model="qwen3.7-text-embedding-flash",
         client=client,
     )
     assert embedder.embed_batch(["first", "second"]) == [[1.0] * 256, [2.0] * 256]

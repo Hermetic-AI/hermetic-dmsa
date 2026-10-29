@@ -28,6 +28,7 @@ from dmsa.memory.coding.storage import CodingStore
 from dmsa.memory.coding.temporal import AsOf
 from dmsa.memory.coding.trust import BASE_TRUST, trust_multiplier
 from dmsa.memory.coding.trust_store import evicted_ids, trust_map
+from dmsa.memory.coding.vector_codec import text_hash
 from dmsa.memory.coding.vector_index import VectorIndex
 
 # 显式结果标签是排序先验: 声称成功的来源优先, 已观测失败的来源降权。
@@ -64,10 +65,25 @@ class CodingRetriever:
         return fingerprint
 
     def embed_new(self, texts: list[str]) -> list[tuple[float, ...]]:
-        """计算并校验批量向量."""
+        """计算批量向量, 同模型同正文的已算结果直接复用.
+
+        同一段正文在同一模型下的向量必然相同, 因此按正文哈希复用不改变检索结果,
+        只省掉重复的嵌入调用。评测语料里大量切片是重复的仓库文件片段, 实测可以
+        省掉约一半的嵌入调用。
+        """
         if self.embedder is None or not texts:
             return []
-        return embed_batch(self.embedder, texts)
+        digests = [text_hash(text) for text in texts]
+        cached = self.store.cached_vectors(self.fingerprint or "", tuple(digests))
+        # 批内相同正文只算一次。
+        pending: dict[str, str] = {}
+        for text, digest in zip(texts, digests, strict=True):
+            if digest not in cached:
+                pending.setdefault(digest, text)
+        if pending:
+            fresh = embed_batch(self.embedder, list(pending.values()))
+            cached.update(zip(pending.keys(), fresh, strict=True))
+        return [cached[digest] for digest in digests]
 
     def collect_candidates(
         self,

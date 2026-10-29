@@ -13,10 +13,9 @@ from dmsa.errors import (
     MemoryLayerError,
 )
 from dmsa.memory._base import MemoryState
-from dmsa.observability import get_logger, get_registry
+from dmsa.observability import get_logger
 
 _logger = get_logger("dmsa.memory.layer")
-_metrics = get_registry()
 
 
 class MemorySearch(MemoryState):

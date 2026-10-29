@@ -133,9 +133,9 @@ def test_competition_accepts_qwen_native_embedding_configuration(
         "DMSA_EMBEDDING_BASE_URL",
         "https://workspace.example/api/v1/services/embeddings/text-embedding/text-embedding",
     )
-    monkeypatch.setenv("DMSA_EMBEDDING_MODEL", "qwen3.7-text-embedding")
+    monkeypatch.setenv("DMSA_EMBEDDING_MODEL", "qwen3.7-text-embedding-flash")
     settings = load_settings("competition", dimension=1024)
-    assert settings.embedding_model == "qwen3.7-text-embedding"
+    assert settings.embedding_model == "qwen3.7-text-embedding-flash"
     assert settings.dimension == 1024
     assert "provider-secret" not in repr(settings)
 

@@ -10,6 +10,7 @@ from typing import Any
 
 from dmsa.gradient.model_advisor import ModelAssistedPolicyProposer
 from dmsa.gradient.policy import FailureDiagnostic, OfflineRSIError, RetrievalPolicy
+from dmsa.observability import get_logger, setup_logging
 
 _MAX_INPUT_BYTES = 64 * 1024
 
@@ -89,9 +90,12 @@ def run() -> dict[str, Any]:
 
 def main() -> int:
     """读取 stdin JSON 并输出建议；错误响应不含模型服务原文。"""
+    # stdout 只写建议 JSON，日志走 stderr
+    setup_logging()
     try:
         result = run()
     except OfflineRSIError as exc:
+        get_logger("dmsa.gradient.rsi_cli").error("rsi proposal failed", reason=exc.message)
         sys.stderr.write(f"RSI proposal failed: {exc.message}\n")
         return 2
     sys.stdout.write(json.dumps(result, ensure_ascii=False) + "\n")

@@ -139,14 +139,14 @@ PowerShell 激活受限时，可直接用 `.\.venv\Scripts\dmsa-memory-http.exe`
 $env:DMSA_MEMORY_API_KEY = "your-memory-service-key"
 $env:DMSA_EMBEDDING_BASE_URL = "https://YOUR-WORKSPACE.cn-beijing.maas.aliyuncs.com/api/v1/services/embeddings/text-embedding/text-embedding"
 $env:DMSA_EMBEDDING_API_KEY = "your-embedding-provider-key"
-$env:DMSA_EMBEDDING_MODEL = "qwen3.7-text-embedding"
+$env:DMSA_EMBEDDING_MODEL = "qwen3.7-text-embedding-flash"
 $env:DMSA_EMBEDDING_DIMENSION = "1024"
 dmsa-memory-http --profile competition --dimension 1024 --storage ./coding-vector.sqlite3
 ```
 
 Bash 用 `export NAME=value` 设置同名变量。替换 workspace endpoint 和密钥，并按 Qwen 模型支持值配置维度；`1024` 是推荐默认值。服务密钥与 embedding 密钥用途不同。
 
-`qwen3.7-text-embedding` 使用 DashScope 原生请求体，最多 20 条一批；写入按 `document` 类型，检索按 `query` 类型。也可把模型设为 `text-embedding-v4` 使用 OpenAI-compatible 适配器。Add 与 Search 都可能请求供应商并产生费用；失败会报错，不静默换成哈希向量。文本、决策模型只在分别运行 RSI advisor 或旧 SGA LLM fusion 时调用。
+`qwen3.7-text-embedding-flash` 使用 DashScope 原生请求体，最多 20 条一批；写入按 `document` 类型，检索按 `query` 类型。也可把模型设为 `text-embedding-v4` 使用 OpenAI-compatible 适配器。Add 与 Search 都可能请求供应商并产生费用；失败会报错，不静默换成哈希向量。文本、决策模型只在分别运行 RSI advisor 或旧 SGA LLM fusion 时调用。
 
 先用独立数据库测试向量模式：从 sparse-dev 切换不会自动给已有记录补向量。模型 fingerprint 改变后，旧向量不会自动转换，需从原始历史重建到新库。
 
@@ -161,8 +161,16 @@ Bash 用 `export NAME=value` 设置同名变量。替换 workspace endpoint 和�
 | GET | `/health` | 无认证存活检查，返回 `{"ok":true}` |
 | POST | `/add` | 写入一个请求中的有序消息 |
 | POST | `/search` | 指定 scope 检索 |
+| GET | `/status` | 鉴权，报告 embedding、vector_index、RSI 生效状态与 `active_policy` |
+| GET | `/metrics` | 鉴权，返回本进程指标快照（延迟、交付条数、状态码计数；重启清零） |
 
 请求 JSON 使用 UTF-8。认证任选其一：`Authorization: Bearer KEY`、`Authorization: Token KEY`、`X-Api-Key: KEY`。建议统一用 Bearer。
+
+上线后先读 `/status`，再读 `/metrics`：前者告诉你稠密通道和向量后端是否真的接上
+（`embedding.enabled=false` 时 `/search` 只有稀疏与精确通道，命中量会明显偏低），后者告诉你慢在哪一段。
+`dmsa.http.search.latency` 与 `dmsa.search.latency` 的差额是认证、契约校验与装包序列化；
+`dmsa.embedding.query.latency` 的 `p95` 决定固定 `top_k` 能否按预算交满；
+`dmsa.search.returned` 直接是实际交付条数。
 
 ### 3.2 Add 请求与返回
 
@@ -459,6 +467,8 @@ nginx 用 `location /v1/memories/ { proxy_pass http://127.0.0.1:18000/; }` 剥�
 | 进化 | `POST https://jensenlyz.cn/v1/memories/rsi/evolve` | `Authorization: Bearer <key>` | 提案 + 回放 + 门禁激活，返回 `status` 与 `version` |
 | 回滚 | `POST https://jensenlyz.cn/v1/memories/rsi/rollback` | `Authorization: Bearer <key>` | 恢复该 scope 已记录的策略版本 |
 | 容器内自检 | `docker compose ... exec -T memory dmsa-memory-smoke` | 容器内已带密钥 | 校验 `/health`、`/add`、`/search` |
+| 能力状态 | 容器内 `http://127.0.0.1:8000/status` | `Authorization: Bearer <key>` | embedding / vector_index / RSI `active_policy` 是否生效；公网是否可达取决于 nginx 转发，未验证前按容器内使用 |
+| 指标快照 | 容器内 `http://127.0.0.1:8000/metrics` | `Authorization: Bearer <key>` | 分路由延迟、检索交付条数、上游调用延迟；进程重启清零 |
 | 只读记忆浏览器 | `ssh -L 18765:127.0.0.1:18765 root@106.12.139.107` 后开 `http://127.0.0.1:18765` | 仅内网 | `/feedback`、`/rsi/*` 也在此端口 |
 | Qdrant 集合 | 容器内 `http://qdrant:6333/collections` | 仅内网，无端口映射 | `DMSA_VECTOR_URL=http://qdrant:6333` 决定向量后端 |
 

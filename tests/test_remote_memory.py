@@ -17,7 +17,7 @@ from dmsa.mcp_server.remote_memory import RemoteMemoryMCPServer, configured_remo
             "/add",
         ),
         ("dmsa_coding_memory_feedback", {"trace_id": "t", "outcome": "success"}, "/feedback"),
-        ("dmsa_coding_memory_status", {}, "/health"),
+        ("dmsa_coding_memory_status", {}, "/status"),
     ],
 )
 def test_stdio_tools_route_to_unified_http(tool, args, path):

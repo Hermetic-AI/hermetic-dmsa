@@ -1,70 +1,36 @@
-"""结构化 JSON logger（PD6）。
+"""结构化 logger 门面（PD6）。
 
 设计原则：
 - 零依赖：只用 stdlib ``logging`` + ``json``。
 - 关键操作（add_memory / backward / aggregate / apply）记录结构化字段。
-- 不替代 stdlib logger：而是包装它，把 extra 字段序列化为 JSON。
+- 不替代 stdlib logger：而是包装它，把 extra 字段序列化为 JSON 或彩色文本。
+
+装配（级别 / 颜色 / 格式 / 文件）在 ``dmsa.observability.log_config``，本模块只负责
+"拿 logger、打日志"。
 """
 
 from __future__ import annotations
 
-import json
 import logging
-import sys
-from datetime import datetime, timezone
 from typing import Any
+
+from dmsa.observability.log_config import (
+    LogLevel,
+    add_logging_args,
+    apply_cli_logging,
+    configure_root,
+    parse_format,
+    parse_level,
+    setup_logging,
+    should_colorize,
+)
+from dmsa.observability.log_formatters import JsonFormatter, TextFormatter
 
 # 默认 logger 名称
 _DEFAULT_LOGGER_NAME = "dmsa"
 
-
-class JsonFormatter(logging.Formatter):
-    """把 log record 序列化为 JSON 字符串。"""
-
-    def format(self, record: logging.LogRecord) -> str:
-        """格式化 log record 为 JSON 字符串。"""
-        payload: dict[str, Any] = {
-            "ts": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
-            "level": record.levelname,
-            "logger": record.name,
-            "message": record.getMessage(),
-        }
-        # 把 LogRecord 的所有非标准字段（extra）合并到 payload
-        standard_attrs = {
-            "name",
-            "msg",
-            "args",
-            "levelname",
-            "levelno",
-            "pathname",
-            "filename",
-            "module",
-            "exc_info",
-            "exc_text",
-            "stack_info",
-            "lineno",
-            "funcName",
-            "created",
-            "msecs",
-            "relativeCreated",
-            "thread",
-            "threadName",
-            "processName",
-            "process",
-            "message",
-            "taskName",
-        }
-        for key, value in record.__dict__.items():
-            if key in standard_attrs or key.startswith("_"):
-                continue
-            try:
-                json.dumps(value)
-                payload[key] = value
-            except (TypeError, ValueError):
-                payload[key] = repr(value)
-        if record.exc_info:
-            payload["exc_info"] = self.formatException(record.exc_info)
-        return json.dumps(payload, ensure_ascii=False, default=str)
+# 包装器 -> 真实调用方的栈深度：_log -> info() -> 业务代码
+_CALLER_STACKLEVEL = 3
 
 
 class JsonLogger:
@@ -75,8 +41,26 @@ class JsonLogger:
         self._logger = logging.getLogger(name)
         self._name = name
 
+    @property
+    def name(self) -> str:
+        """底层 stdlib logger 名称。"""
+        return self._name
+
+    def isEnabledFor(self, level: LogLevel) -> bool:
+        """判断某级别是否会真的输出，用于跳过昂贵的日志构造。"""
+        return self._logger.isEnabledFor(level)
+
     def _log(self, level: int, msg: str, **fields: Any) -> None:
-        self._logger.log(level, msg, extra=fields)
+        # stacklevel=3: 跳过 _log 与 info/debug/... 这层包装，让行号指向真实调用方。
+        self._logger.log(level, msg, extra=fields, stacklevel=_CALLER_STACKLEVEL)
+
+    def log(self, level: LogLevel, msg: str, **fields: Any) -> None:
+        """按显式级别整数记录日志（供中间件按状态码选择级别）。"""
+        self._log(int(level), msg, **fields)
+
+    def trace(self, msg: str, **fields: Any) -> None:
+        """记录 TRACE（5）级别日志，用于逐帧调试。"""
+        self._log(5, msg, **fields)
 
     def debug(self, msg: str, **fields: Any) -> None:
         """记录 DEBUG 级别日志。"""
@@ -96,24 +80,7 @@ class JsonLogger:
 
     def exception(self, msg: str, **fields: Any) -> None:
         """记录 ERROR 级别日志，附带当前异常 traceback。"""
-        self._logger.exception(msg, extra=fields)
-
-
-def configure_root(
-    level: int = logging.INFO,
-    stream: Any = None,
-) -> None:
-    """配置根 logger：JSON formatter + 单一 stream handler。
-
-    重复调用是幂等的：先清空已有 handler 再加新的。
-    """
-    root = logging.getLogger()
-    root.setLevel(level)
-    for handler in list(root.handlers):
-        root.removeHandler(handler)
-    handler = logging.StreamHandler(stream or sys.stderr)
-    handler.setFormatter(JsonFormatter())
-    root.addHandler(handler)
+        self._logger.exception(msg, extra=fields, stacklevel=_CALLER_STACKLEVEL - 1)
 
 
 def get_logger(name: str = _DEFAULT_LOGGER_NAME) -> JsonLogger:
@@ -121,4 +88,17 @@ def get_logger(name: str = _DEFAULT_LOGGER_NAME) -> JsonLogger:
     return JsonLogger(name)
 
 
-__all__ = ["JsonFormatter", "JsonLogger", "configure_root", "get_logger"]
+__all__ = [
+    "JsonFormatter",
+    "JsonLogger",
+    "LogLevel",
+    "TextFormatter",
+    "add_logging_args",
+    "apply_cli_logging",
+    "configure_root",
+    "get_logger",
+    "parse_format",
+    "parse_level",
+    "setup_logging",
+    "should_colorize",
+]

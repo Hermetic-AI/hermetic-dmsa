@@ -22,6 +22,7 @@ from dmsa.memory.coding.schema import initialize
 from dmsa.memory.coding.snapshot import RepoSnapshot
 from dmsa.memory.coding.snapshot_store import load_snapshot, save_snapshot
 from dmsa.memory.coding.storage_queries import (
+    cached_vectors,
     exact_candidates,
     message_prefixes,
     neighbors,
@@ -212,6 +213,13 @@ class CodingStore:
     def message_prefixes(self, user_id: str, message_ids: Sequence[str]) -> dict[str, str]:
         """读取指定来源消息正文的前缀, 用于判断整条消息的形态."""
         return message_prefixes(self.db, user_id, message_ids)
+
+    def cached_vectors(
+        self, fingerprint: str, hashes: Sequence[str]
+    ) -> dict[str, tuple[float, ...]]:
+        """按内容哈希读取同模型下已算好的向量, 供写入侧直接复用."""
+        with self.lock:
+            return cached_vectors(self.db, fingerprint, hashes)
 
     def revision(self, user_id: str) -> int:
         """读取 scope 当前 revision."""

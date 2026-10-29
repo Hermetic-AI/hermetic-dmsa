@@ -15,14 +15,13 @@ from dmsa.errors import (
     MemoryLayerError,
 )
 from dmsa.memory._base import MemoryState
-from dmsa.observability import get_logger, get_registry
+from dmsa.observability import get_logger
 from dmsa.types import MemoryLayerConfig
 
 if TYPE_CHECKING:
     from dmsa.memory.layer import MemoryLayer
 
 _logger = get_logger("dmsa.memory.layer")
-_metrics = get_registry()
 
 
 class MemorySerialization(MemoryState):

@@ -29,10 +29,9 @@ from dmsa.memory.lineage_query import (
     to_pmd_edge_types,
     validate_query,
 )
-from dmsa.observability import get_logger, get_registry, start_span
+from dmsa.observability import get_logger, start_span
 
 _logger = get_logger("dmsa.memory.layer")
-_metrics = get_registry()
 
 
 class MemoryRead(MemoryState):

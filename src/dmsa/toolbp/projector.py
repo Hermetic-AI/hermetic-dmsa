@@ -133,7 +133,7 @@ class ToolBPEngine:
                     grad_learning_rate=schema.grad_learning_rate,
                 )
                 _metrics.counter("dmsa.toolbp.project").inc()
-                _metrics.histogram("dmsa.toolbp.ops_applied").observe(len(applied_ops))
+                _metrics.count_histogram("dmsa.toolbp.ops_applied").observe(len(applied_ops))
                 span.set_attribute("version", new_version)
                 span.set_attribute("ops_applied", len(applied_ops))
                 _logger.info(

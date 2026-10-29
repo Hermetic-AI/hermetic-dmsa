@@ -23,6 +23,7 @@ from dmsa.memory.coding.storage_queries import dense_candidates as dense_candida
 from dmsa.memory.coding.temporal import AsOf
 from dmsa.memory.coding.tokenize import query_terms
 from dmsa.memory.coding.vector_index import VectorIndex
+from dmsa.observability import observe_count, timed
 
 # 稠密通道名; 其余通道名在 collect_channels 里定义.
 DENSE_CHANNEL = "dense"
@@ -121,11 +122,13 @@ def query_vector(embedder: Embedder | None, query: str) -> tuple[float, ...] | N
     if embedder is None:
         return None
     query_embedder = getattr(embedder, "embed_query", None)
-    vector = (
-        tuple(float(value) for value in query_embedder(query))
-        if callable(query_embedder)
-        else embed_batch(embedder, [query])[0]
-    )
+    # 只框住外部调用，校验失败不算上游慢。
+    with timed("dmsa.embedding.query.latency"):
+        vector = (
+            tuple(float(value) for value in query_embedder(query))
+            if callable(query_embedder)
+            else embed_batch(embedder, [query])[0]
+        )
     if (
         len(vector) != embedder.dimension
         or not all(math.isfinite(value) for value in vector)
@@ -138,11 +141,13 @@ def query_vector(embedder: Embedder | None, query: str) -> tuple[float, ...] | N
 def embed_batch(embedder: Embedder, texts: list[str]) -> list[tuple[float, ...]]:
     """计算并校验批量向量."""
     try:
-        values = embedder.embed_batch(texts)
+        with timed("dmsa.embedding.batch.latency"):
+            values = embedder.embed_batch(texts)
         if not isinstance(values, (list, tuple)):
             values = list(values)
     except Exception as exc:
         raise CodingMemoryError("embedding provider operation failed") from exc
+    observe_count("dmsa.embedding.batch.items", len(texts))
     if len(values) != len(texts):
         raise CodingMemoryValidationError("embedder returned wrong vector count")
     result = []
@@ -182,11 +187,14 @@ def dense_index_ids(
     if vector_index is None:
         return ()
     try:
-        return tuple(
-            vector_index.search(user_id, fingerprint, vector, limit or policy.candidate_limit)
-        )
+        with timed("dmsa.vector_index.latency"):
+            found = tuple(
+                vector_index.search(user_id, fingerprint, vector, limit or policy.candidate_limit)
+            )
     except Exception as exc:
         raise CodingMemoryError("vector index search failed") from exc
+    observe_count("dmsa.vector_index.returned", len(found))
+    return found
 
 
 def dense_scan_scores(

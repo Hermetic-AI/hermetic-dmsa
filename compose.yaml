@@ -18,6 +18,9 @@ services:
       - "${DMSA_EMBEDDING_DIMENSION:-1024}"
     environment:
       DMSA_MEMORY_API_KEY: "${DMSA_MEMORY_API_KEY:?Set DMSA_MEMORY_API_KEY in .env}"
+      DMSA_LOG_LEVEL: "${DMSA_LOG_LEVEL:-INFO}"
+      DMSA_LOG_FORMAT: "${DMSA_LOG_FORMAT:-text}"
+      DMSA_LOG_COLOR: "${DMSA_LOG_COLOR:-auto}"
       DMSA_RSI_ENABLED: "${DMSA_RSI_ENABLED:-true}"
       DMSA_RSI_MODELS: "${DMSA_RSI_MODELS:-true}"
       DMSA_DECISION_BASE_URL: "${DMSA_DECISION_BASE_URL:-}"
@@ -46,6 +49,10 @@ services:
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/api/rsi',timeout=3)"]
     command: ["--database", "/data/coding.sqlite3", "--host", "0.0.0.0", "--port", "8765"]
+    environment:
+      DMSA_LOG_LEVEL: "${DMSA_LOG_LEVEL:-INFO}"
+      DMSA_LOG_FORMAT: "${DMSA_LOG_FORMAT:-text}"
+      DMSA_LOG_COLOR: "${DMSA_LOG_COLOR:-auto}"
     ports:
       - "${DMSA_BROWSER_BIND:-127.0.0.1}:${DMSA_BROWSER_PORT:-8765}:8765"
     volumes:

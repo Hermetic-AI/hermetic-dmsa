@@ -149,8 +149,8 @@ class SGAAggregator:
                 )
 
             _metrics.counter("dmsa.aggregate.runs").inc()
-            _metrics.histogram("dmsa.aggregate.samples").observe(len(samples))
-            _metrics.histogram("dmsa.aggregate.clusters").observe(len(clusters))
+            _metrics.count_histogram("dmsa.aggregate.samples").observe(len(samples))
+            _metrics.count_histogram("dmsa.aggregate.clusters").observe(len(clusters))
             _logger.info(
                 "aggregation complete",
                 sample_count=len(samples),

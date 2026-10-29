@@ -5,10 +5,14 @@ from __future__ import annotations
 import io
 import json
 import logging
+import math
 
 import pytest
 
+from dmsa.errors import DMSAError, MetricValueError
 from dmsa.observability import (
+    COUNT_BUCKETS,
+    DEFAULT_BUCKETS,
     Counter,
     Histogram,
     MetricsRegistry,
@@ -103,3 +107,92 @@ def test_trace_span_nesting() -> None:
     """嵌套 span 形成父子关系。"""
     with start_span("parent") as parent, start_span("child") as child:
         assert child.parent_id == parent.span_id
+
+
+def test_counter_decrement_is_dmsa_error() -> None:
+    """Counter 递减同时是 DMSAError 与 ValueError（保留既有兜底捕获）。"""
+    with pytest.raises(ValueError, match="cannot be decremented") as excinfo:
+        Counter("test").inc(-0.5)
+    assert isinstance(excinfo.value, DMSAError)
+
+
+def test_empty_histogram_reports_none_not_zero() -> None:
+    """未观测的统计量导出为 null，不用 0 冒充测量结果。"""
+    d = Histogram("empty_h").to_dict()
+    assert d["count"] == 0
+    assert d["mean"] is None
+    assert d["min"] is None
+    assert d["max"] is None
+    assert d["p50"] is None
+    assert d["p95"] is None
+
+
+def test_histogram_tracks_min_max() -> None:
+    """Histogram 记录极值。"""
+    h = Histogram("extreme", buckets=(1.0, 10.0, math.inf))
+    h.observe(0.4)
+    h.observe(7.0)
+    d = h.to_dict()
+    assert d["min"] == 0.4
+    assert d["max"] == 7.0
+    assert d["sum"] == 7.4
+
+
+def test_histogram_quantile_interpolates() -> None:
+    """分位数在桶内线性插值，落在量程内。"""
+    h = Histogram("lat", buckets=(0.01, 0.1, 1.0, math.inf))
+    for value in (0.005, 0.02, 0.05, 0.2, 0.5):
+        h.observe(value)
+    p50 = h.quantile(0.5)
+    assert p50 is not None
+    assert 0.02 <= p50 <= 0.5
+
+
+def test_histogram_quantile_beyond_range_is_none() -> None:
+    """观测落在 +Inf 桶时不给假的分位数。"""
+    h = Histogram("over", buckets=(1.0, math.inf))
+    h.observe(500.0)
+    assert h.quantile(0.99) is None
+
+
+def test_histogram_quantile_rejects_bad_q() -> None:
+    """分位点越界 raise MetricValueError。"""
+    h = Histogram("bad_q")
+    h.observe(1.0)
+    with pytest.raises(MetricValueError, match="out of range"):
+        h.quantile(1.5)
+
+
+def test_count_buckets_separate_scale_from_latency() -> None:
+    """规模类指标用 COUNT_BUCKETS，整数观测不会被压进 +Inf 桶。"""
+    registry = MetricsRegistry()
+    h = registry.count_histogram("dmsa.aggregate.samples")
+    for size in (3, 8, 20, 40, 120):
+        h.observe(size)
+    assert h.buckets == COUNT_BUCKETS
+    d = h.to_dict()
+    assert d["buckets"]["5.0"] == 1
+    assert d["buckets"]["20.0"] == 3
+    assert d["buckets"]["50.0"] == 4
+    assert d["buckets"]["100.0"] == 4
+    assert d["buckets"]["inf"] == 5
+    p50 = d["p50"]
+    assert p50 is not None
+    assert p50 <= 50.0
+
+
+def test_registry_histogram_keeps_default_latency_buckets() -> None:
+    """registry.histogram 默认仍是延迟桶（不破坏既有调用）。"""
+    registry = MetricsRegistry()
+    assert registry.histogram("latency").buckets is DEFAULT_BUCKETS
+
+
+def test_export_is_sorted_and_complete() -> None:
+    """export 按名称稳定排序，便于 diff 与快照比对。"""
+    registry = MetricsRegistry()
+    registry.counter("z_counter").inc()
+    registry.counter("a_counter").inc(2)
+    registry.count_histogram("b_scale").observe(7)
+    payload = registry.export()
+    assert [c["name"] for c in payload["counters"]] == ["a_counter", "z_counter"]
+    assert [h["name"] for h in payload["histograms"]] == ["b_scale"]

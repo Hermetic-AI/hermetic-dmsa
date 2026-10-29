@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from http.client import HTTPException
 from typing import Any
 from urllib.error import URLError
@@ -12,7 +13,7 @@ from urllib.request import Request, urlopen
 
 from dmsa.errors import DMSAError, TransportError
 from dmsa.mcp_server.http.runtime import read_secret
-from dmsa.observability.logging import configure_root, get_logger
+from dmsa.observability import add_logging_args, configure_root, get_logger
 
 _CONTENT = "DMSA deployment persistence smoke marker"
 
@@ -107,8 +108,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--request-id", default="dmsa-deployment-smoke-v1")
     parser.add_argument("--search-only", action="store_true")
     parser.add_argument("--health-only", action="store_true")
+    add_logging_args(parser)
     args = parser.parse_args(argv)
-    configure_root()
+    # 探针的 stderr 是机器消费的固定 JSON 行：CLI > 环境变量 > json 默认
+    configure_root(
+        level=args.log_level,
+        fmt=args.log_format or os.environ.get("DMSA_LOG_FORMAT") or "json",
+        log_file=args.log_file,
+    )
     try:
         api_key = "" if args.health_only else read_secret("DMSA_MEMORY_API_KEY")
         run_smoke(

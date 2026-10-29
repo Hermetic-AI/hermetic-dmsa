@@ -19,7 +19,7 @@ from dmsa.memory.coding.generalize import RuleGroup, SourceSlice
 from dmsa.memory.coding.ids import chunk_id, message_id
 from dmsa.memory.coding.schema import scope_token
 from dmsa.memory.coding.trust_store import ensure_stats
-from dmsa.memory.coding.vector_codec import encode_vector
+from dmsa.memory.coding.vector_codec import encode_vector, text_hash
 
 # 派生条目的来源角色; 检索这些角色时排除派生条目, 避免它们被再次合并.
 CONSOLIDATED_ROLE = "consolidated"
@@ -166,8 +166,16 @@ def publish_consolidated(
     insert_relations(db, scope, chunk_key, anchors)
     if fingerprint is not None and vector is not None:
         db.execute(
-            "INSERT INTO vectors VALUES(?,?,?,?,?)",
-            (chunk_key, scope, fingerprint, len(vector), encode_vector(vector)),
+            "INSERT INTO vectors(chunk_id, user_id, fingerprint, dimension, vector, text_hash) "
+            "VALUES(?,?,?,?,?,?)",
+            (
+                chunk_key,
+                scope,
+                fingerprint,
+                len(vector),
+                encode_vector(vector),
+                text_hash(text),
+            ),
         )
     db.execute(
         "INSERT INTO corpus VALUES(?,?) ON CONFLICT(user_id) "

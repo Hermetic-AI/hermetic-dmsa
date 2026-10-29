@@ -23,6 +23,7 @@ class ErrorCode(str, Enum):
     DMSA_0000 = "DMSA-0000"  # DMSAError 基类
     DMSA_0001 = "DMSA-0001"  # Configuration error
     DMSA_0002 = "DMSA-0002"  # Serialization error
+    DMSA_0003 = "DMSA-0003"  # MetricValueError
 
     # L1 记忆层
     DMSA_1000 = "DMSA-1000"  # MemoryLayerError 基类
@@ -119,6 +120,15 @@ class SerializationError(DMSAError):
     """JSON / msgpack 序列化失败。"""
 
     code = ErrorCode.DMSA_0002
+
+
+class MetricValueError(DMSAError, ValueError):
+    """指标记录收到非法值（如 Counter 递减、分位数越界）。
+
+    同时继承 ``ValueError``：既有调用方以 ``except ValueError`` 兜底，行为保持不变。
+    """
+
+    code = ErrorCode.DMSA_0003
 
 
 # ============================================================================
@@ -280,6 +290,7 @@ __all__ = [
     "LineageNotFoundError",
     "MCPServerError",
     "MemoryLayerError",
+    "MetricValueError",
     "MissingParentError",
     "ProjectionRollbackError",
     "SchemaValidationError",

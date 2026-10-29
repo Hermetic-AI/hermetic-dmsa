@@ -16,7 +16,7 @@ from dmsa.config import load_config
 from dmsa.errors import DMSAError
 from dmsa.mcp_server.server import MCPServer
 from dmsa.memory import MemoryLayer
-from dmsa.observability import get_logger
+from dmsa.observability import get_logger, setup_logging
 from dmsa.types import MemoryLayerConfig
 
 __all__ = ["build_parser", "main"]
@@ -54,6 +54,8 @@ def main(argv: list[str] | None = None) -> int:
 
     parser = build_parser()
     args = parser.parse_args(argv)
+    # stdio MCP 的 stdout 归协议，日志一律走 stderr（setup_logging 的默认目标）
+    setup_logging("DEBUG" if args.verbose else None)
     # 配置
     try:
         config = load_config()
@@ -104,6 +106,12 @@ def main(argv: list[str] | None = None) -> int:
 
     # 创建 server
     server = MCPServer(memory_layer=layer)
+    get_logger(__name__).info(
+        "mcp stdio server started",
+        storage=str(config.storage.path),
+        embedder=config.embedder.backend,
+        fusion_backend=config.gradient.fusion_backend,
+    )
     # 跑
     try:
         asyncio.run(server.run_stdio())

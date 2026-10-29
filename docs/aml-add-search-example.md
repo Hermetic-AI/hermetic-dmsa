@@ -115,6 +115,6 @@ curl "https://你的域名/health"   # 无 Authorization 头
 ## 7. 提交前硬前提与配额
 
 1. 服务必须从 `127.0.0.1` 换成公网 HTTPS（反代 + TLS），否则准入网络校验不通过。
-2. 开源方法榜（Academic）强制 `text-embedding-v4` 嵌入 + `gpt-4o-mini` LLM 组件（rerank 不限）；当前服务用的是 DashScope `qwen3.7-text-embedding`，**走开源榜前需换模型**，商业产品榜不受限。
+2. 开源方法榜（Academic）强制 `text-embedding-v4` 嵌入 + `gpt-4o-mini` LLM 组件（rerank 不限）；当前服务用的是 DashScope `qwen3.7-text-embedding-flash`，**走开源榜前需换模型**，商业产品榜不受限。
 3. 评测数据禁止用于训练/微调/产品分析/数据集重建，任务完成后 30 天内删除。
 4. 配额：Smoke 每小时 1 次、本届每赛道最多 30 次；Full 每 Key 每赛道最多 2 次，第 2 次须距首次完成 30 天。

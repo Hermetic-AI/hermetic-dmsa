@@ -68,9 +68,9 @@ def load_settings(
     if not valid:
         raise ConfigError(f"required valid HTTP endpoint: {endpoint_env}")
     embedding_model = os.environ.get("DMSA_EMBEDDING_MODEL", "").strip()
-    if embedding_model not in {"text-embedding-v4", "qwen3.7-text-embedding"}:
+    if embedding_model not in {"text-embedding-v4", "qwen3.7-text-embedding-flash"}:
         raise ConfigError(
-            "DMSA_EMBEDDING_MODEL must be text-embedding-v4 or qwen3.7-text-embedding"
+            "DMSA_EMBEDDING_MODEL must be text-embedding-v4 or qwen3.7-text-embedding-flash"
         )
     embedding_key = read_secret("DMSA_EMBEDDING_API_KEY")
     return RuntimeSettings(api_key, endpoint, embedding_key, dimension, embedding_model)

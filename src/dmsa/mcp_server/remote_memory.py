@@ -10,6 +10,9 @@ import httpx
 
 from dmsa.mcp_server.coding_memory import CodingMemoryMCPServer
 from dmsa.mcp_server.protocol import JsonRpcRequest, make_response
+from dmsa.observability import get_logger
+
+_logger = get_logger("dmsa.mcp_server.remote_memory")
 
 
 class RemoteMemoryMCPServer(CodingMemoryMCPServer):
@@ -21,6 +24,7 @@ class RemoteMemoryMCPServer(CodingMemoryMCPServer):
         self.client = httpx.Client(
             trust_env=False, base_url=url, headers={"Authorization": f"Bearer {key}"}, timeout=180
         )
+        _logger.info("remote memory client ready", url=url, scope=scope, key_present=bool(key))
 
     def _call(self, request: JsonRpcRequest) -> dict[str, Any]:
         """将 MCP 工具参数转换成受认证 HTTP 调用。"""
@@ -29,7 +33,8 @@ class RemoteMemoryMCPServer(CodingMemoryMCPServer):
             return self._tool_error(request, "arguments must be an object")
         try:
             if name == "dmsa_coding_memory_status":
-                response = self.client.get("/health")
+                # /status 带能力开关，/health 只有 ok=true，不足以回答"配置生效了吗"。
+                response = self.client.get("/status", params={"scope": self.scope})
             elif name == "dmsa_coding_memory_search":
                 response = self.client.post(
                     "/search",
@@ -67,7 +72,13 @@ class RemoteMemoryMCPServer(CodingMemoryMCPServer):
                 },
                 request.id,
             )
-        except (httpx.HTTPError, ValueError):
+        except (httpx.HTTPError, ValueError) as exc:
+            _logger.error(
+                "unified DMSA request failed",
+                tool=str(name),
+                error_type=type(exc).__name__,
+                reason=str(exc)[:200],
+            )
             return self._tool_error(request, "unified DMSA request failed")
 
     def close(self) -> None:

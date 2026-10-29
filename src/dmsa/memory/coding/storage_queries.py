@@ -12,6 +12,9 @@ from dmsa.memory.coding.temporal import AsOf, as_of_filter
 from dmsa.memory.coding.tokenize import GRAM
 from dmsa.memory.coding.vector_codec import decode_vector
 
+# 单次哈希查询的参数上限, 避免大批量写入时触碰 SQLite 变量数限制。
+_HASH_QUERY_BATCH = 400
+
 
 def _like_pattern(term: str) -> str:
     """把词项转成转义过的 LIKE 模式, 使 % 和 _ 按字面匹配."""
@@ -172,6 +175,37 @@ def vectors_by_ids(
             result[str(row["chunk_id"])] = decode_vector(row["vector"])
         except (TypeError, ValueError):
             continue
+    return result
+
+
+def cached_vectors(
+    db: sqlite3.Connection, fingerprint: str, hashes: Sequence[str]
+) -> dict[str, tuple[float, ...]]:
+    """按内容哈希读取同模型下已算好的向量, 供写入侧直接复用.
+
+    同一段正文在同一模型下的向量必然相同, 因此跨作用域复用不改变检索结果,
+    只省掉重复的嵌入调用。
+    """
+    if not hashes:
+        return {}
+    unique = tuple(dict.fromkeys(hashes))
+    result: dict[str, tuple[float, ...]] = {}
+    for offset in range(0, len(unique), _HASH_QUERY_BATCH):
+        batch = unique[offset : offset + _HASH_QUERY_BATCH]
+        placeholders = ",".join("?" for _ in batch)
+        rows = db.execute(
+            f"SELECT text_hash, vector FROM vectors WHERE fingerprint=? "
+            f"AND text_hash IN ({placeholders})",
+            (fingerprint, *batch),
+        ).fetchall()
+        for row in rows:
+            digest = str(row["text_hash"])
+            if digest in result:
+                continue
+            try:
+                result[digest] = decode_vector(row["vector"])
+            except (TypeError, ValueError):
+                continue
     return result
 
 

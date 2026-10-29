@@ -8,10 +8,16 @@
 需要完整请求/响应、运行命令与 Agent 测试步骤，请先看 [Coding Memory 实操指南](coding-memory-guide.md)。
 
 `from dmsa.mcp_server.http import create_app` 提供无认证 `GET
-/health` 与受认证 `POST /add`、`POST /search`。认证接受 Bearer、Token 或
+/health` 与受认证 `POST /add`、`POST /search`、`GET /status`、`GET /metrics`。
+认证接受 Bearer、Token 或
 `X-Api-Key`。调用方注入的 CodingMemory 归调用方管理；HTTP CLI 管理自己的实例。
 消息 content 可为字符串或 `{type: "text", text: ...}` parts；只支持纯文本。
 搜索由 `user_id` 隔离，`options` 仅接受空数组。`/v1/runs` 尚未实现。
+
+`GET /status?scope=<id>` 复用 stdio 的 `status_payload`，额外补 `uptime_seconds`、
+`embedding.{enabled,fingerprint}` 与 `vector_index`（`sqlite` 或 `qdrant`），用来回答
+"配置到底生效了吗"；`GET /metrics` 返回本进程的 `get_registry().export()` 快照加
+`uptime_seconds`。两者都不含凭据、请求原文或模型响应。指标随进程重启清零。
 
 安装 `.[http]` 后 `dmsa-memory-http --profile sparse-dev` 运行离线稀疏开发
 模式。`competition` profile 要求显式 endpoint、embedding key 与
@@ -109,6 +115,8 @@ schema migration，旧数据库可直接打开，分词器为 `unicode61` 的历
 写入按来源消息整体剔除，续接片不再被当成现行代码注入。
 写入时同一 session 的多轮消息会合并成一条 `[episode]` 会话级经验卡（症状、根因、最终补丁与
 验证结论），只有存在补丁且其后有显式验证时才生成；原始消息切片保持不变。
+持久向量按 float32 字节存放（1024 维约 4KB），并带一列正文摘要用于内容寻址复用：同一段正文
+在同一模型下只计算一次向量，重复正文直接复用，检索结果不变。
 
 ## CodingMemory 扩展能力
 
@@ -288,7 +296,7 @@ currently supported. The `/v1/runs` protocol is not implemented.
 Install `hermetic-dmsa[http]` and run `dmsa-memory-http --profile sparse-dev`
 for the explicit local sparse-only profile. `--profile competition` supports
 `text-embedding-v4` over the existing OpenAI-compatible adapter, or
-`qwen3.7-text-embedding` over the DashScope native API adapter. Qwen uses
+`qwen3.7-text-embedding-flash` over the DashScope native API adapter. Qwen uses
 `DMSA_EMBEDDING_BASE_URL` as the exact endpoint and supports dimensions
 256/512/768/1024/1536/2048/2560; it sends document/query text types separately
 and splits batches at 20 inputs. No provider credential or runtime call is
@@ -300,3 +308,48 @@ and `gate`. It reads `DMSA_DECISION_BASE_URL`, `DMSA_DECISION_API_KEY`, and
 `DMSA_DECISION_MODEL`, with text explanations from `DMSA_TEXT_*`. It does not
 automatically activate a policy. No official provider compatibility or
 competition scale is claimed.
+
+## 日志 API
+
+`dmsa.observability` 导出日志门面，全部基于 stdlib，无第三方依赖。
+
+| 入口 | 作用 |
+| --- | --- |
+| `get_logger(name)` | 取 `JsonLogger`，方法 `trace/debug/info/warning/error/exception/log`，关键字参数即结构化字段 |
+| `setup_logging(level=None, stream=None, *, fmt=None, log_file=None)` | 服务/CLI 入口装配，未传参时读 `DMSA_LOG_*` 环境变量，返回生效级别 |
+| `configure_root(...)` | `setup_logging` 的底层实现，额外支持 `color` 与 `force` |
+| `add_logging_args(parser)` / `apply_cli_logging(args)` | 给 argparse 挂 `--log-level/--log-format/--log-file` 并按参数装配 |
+| `parse_level` / `parse_format` / `should_colorize` / `quiet_third_party` | 单项解析与三方降噪，非法级别或格式抛 `InvalidConfigValueError` |
+| `TextFormatter` / `JsonFormatter` | 可单独使用；两者都输出 `logger:func:line` 与 `trace_id` |
+| `trace_context(trace_id)` / `bind_trace_id` / `current_trace_id` | 用 contextvar 给一段调用链绑定 trace ID |
+
+约定：`JsonLogger` 通过 `stacklevel` 上报真实调用点，因此 `func`/`line` 指向业务代码而
+不是包装器内部；重复装配日志是幂等的，只替换本模块自己安装的 handler，不影响宿主或测试
+框架已挂载的 handler。默认输出流是 stderr，因为 stdio MCP 与若干 CLI 把 stdout 留给协议
+和结果本身。
+
+## 指标 API
+
+`dmsa.observability` 同时导出零依赖的 metrics 门面。指标按进程累积，重启清零；要跨进程
+看历史仍然依赖 SQLite 审计表，指标只负责"现在这台机器正在发生什么"。
+
+| 入口 | 作用 |
+| --- | --- |
+| `get_registry()` | 全局注册表；`counter(name)`、`histogram(name, buckets=)`、`count_histogram(name)`、`export()`、`reset()` |
+| `timed(latency_name, *, registry=None, buckets=)` | 上下文管理器，写入 `<stem>.latency` / `.calls` / `.failures`，异常原样抛出 |
+| `observe_count(name, value, *, registry=None)` | 记录"个数"形态观测，自动使用 `COUNT_BUCKETS` |
+| `Counter` / `Histogram` | 单调计数与累积分桶；`Histogram.to_dict()` 附 `min`/`max`/`mean`/`p50`/`p95`/`p99` |
+| `DEFAULT_BUCKETS` / `COUNT_BUCKETS` | 延迟（秒，1ms-10s）与规模（1-500）两套桶，按观测量形态选择 |
+| `start_span(name, **attrs)` | 退出时把耗时写入 `dmsa.span.<name>.latency`，异常写入 `.failures` |
+
+约定：未观测到的统计量导出为 `null`，不用 `0` 冒充测量结果；落在 `+Inf` 桶的分位数返回
+`null`，表示超出量程而不是"很快"。`Counter.inc()` 拒绝负数，抛 `MetricValueError`
+（`DMSAError` 与 `ValueError` 双继承，既有 `except ValueError` 兜底不受影响，错误码
+`DMSA-0003`）。指标名基数有界：路由名走固定映射，span 名是代码里的字面量。
+
+现有埋点：`dmsa.http.latency`、`dmsa.http.<route>.latency`、`dmsa.http.requests.<4xx|5xx|…>`、
+`dmsa.http.health_checks`、`dmsa.search.latency`、`dmsa.search.returned`、
+`dmsa.embedding.query.latency`、`dmsa.embedding.batch.latency`、`dmsa.embedding.batch.items`、
+`dmsa.vector_index.latency`、`dmsa.vector_index.returned`。健康检查只计数、不进延迟直方图，
+否则探针流量会淹没真实请求的延迟分布；`dmsa.search.returned` 直接对应平台写死的 `top_k`
+交付契约，比排序质量更该先被看见。

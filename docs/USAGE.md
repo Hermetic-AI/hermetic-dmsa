@@ -367,28 +367,45 @@ metrics = get_registry()
 print(metrics.export())
 ```
 
-输出：
+下面是本机 `dmsa-memory-http`（`sparse-dev`，离线无 embedding）跑过一次
+`POST /add` + `POST /search` 之后 `GET /metrics` 的真实快照（已省略部分桶），
+不是手写示例：
 
 ```python
 {
   "counters": [
-    {"type": "counter", "name": "dmsa.add_memory", "value": 42.0},
-    {"type": "counter", "name": "dmsa.add_edge", "value": 15.0},
-    {"type": "counter", "name": "dmsa.aggregate.runs", "value": 8.0},
-    {"type": "counter", "name": "dmsa.toolbp.project", "value": 3.0},
+    {"type": "counter", "name": "dmsa.http.requests.2xx", "value": 3.0},
+    {"type": "counter", "name": "dmsa.search.calls", "value": 1.0},
+    {"type": "counter", "name": "dmsa.search.failures", "value": 0.0},
   ],
   "histograms": [
-    {
-      "type": "histogram",
-      "name": "dmsa.aggregate.samples",
-      "count": 8,
-      "sum": 32.0,
-      "mean": 4.0,
-      "buckets": {"0.001": 0, "0.01": 0, ..., "inf": 8},
-    },
+    {"name": "dmsa.http.add.latency", "count": 1, "mean": 0.00729,
+     "min": 0.00729, "max": 0.00729, "p50": 0.0075, "p95": 0.00975,
+     "buckets": {"0.01": 1, "0.05": 1, "...": "...", "inf": 1}},
+    {"name": "dmsa.http.search.latency", "count": 1, "mean": 0.02164,
+     "min": 0.02164, "max": 0.02164, "p50": 0.03, "p95": 0.048},
+    {"name": "dmsa.search.latency", "count": 1, "mean": 0.00389,
+     "min": 0.0038887, "max": 0.0038887, "p50": 0.003, "p95": 0.0048},
+    {"name": "dmsa.search.returned", "count": 1, "mean": 1.0, "min": 1, "max": 1,
+     "buckets": {"1.0": 1, "2.0": 1, "...": "...", "inf": 1}},
+    {"name": "dmsa.write.chunks", "count": 1, "mean": 1.0, "min": 1, "max": 1},
   ],
+  "uptime_seconds": 17.235,
 }
 ```
+
+怎么读这份快照：
+
+- `dmsa.http.search.latency`（21.6ms）减去 `dmsa.search.latency`（3.9ms）≈ 17.7ms，就是
+  认证、契约校验与装包序列化的开销；上游 embedding 一旦接上，差额会体现在
+  `dmsa.embedding.query.latency`。
+- `dmsa.search.returned` 用规模桶（`COUNT_BUCKETS`），`min`/`max`/`mean` 是精确值，
+  `p50`/`p95` 是桶内线性插值的估算，样本很少时会给出小数，只用来看量级。
+- 分位数落进 `+Inf` 桶时导出 `null`，含义是"超出量程"，不是"很快"。
+- 指标按进程累积，`docker compose restart` 后清零；跨进程的历史仍然在 SQLite 审计表里。
+- `dmsa.add_memory` / `dmsa.add_edge` / `dmsa.apply_text_gradient` 属于旧版 `MemoryLayer`
+  写入路径，CodingMemory（HTTP 与 stdio MCP）走的是 `dmsa.write.chunks` 与
+  `dmsa.http.add.latency`，两者不会同时出现。
 
 **实时监控仪表板示例**（30 行 Python）：
 
@@ -460,26 +477,48 @@ print(span.to_dict())
 }
 ```
 
-### 4.3 结构化 JSON 日志
+### 4.3 日志格式（文本 / JSON）
 
-`dmsa.observability.logging.configure_root()` 启用 JSON 输出：
+所有服务与 CLI 入口在启动时自动装配日志，无需写代码。默认是带毫秒时间戳、级别、
+`logger:函数:行号`、trace ID 的单行文本，TTY 下自动上色：
+
+```text
+2026-10-29 10:06:26.067 | WARNING  | dmsa.mcp_server.http.app:authenticate:77 | trace=64b341693a17 | unauthorized request method=POST path=/search reason=mismatch
+```
+
+换成 JSON 只需设置 `DMSA_LOG_FORMAT=json`（或 `--log-format json`）：
 
 ```python
-from dmsa.observability.logging import configure_root
-import logging
+from dmsa.observability import configure_root
 
-configure_root(level=logging.INFO)
+configure_root(level="info", fmt="json")
 ```
 
-之后所有 dmsa 操作都会输出 JSON 行到 stderr：
+之后所有 dmsa 操作都会输出 JSON 行到 stderr（`location` / `func` / `line` 与文本行同源）：
 
 ```json
-{"ts": "2026-07-03T10:30:15.123Z", "level": "INFO", "logger": "dmsa.memory.layer", "message": "memory added", "node_id": "01HXYZ...", "content_length": 42, "requires_grad": false}
-{"ts": "2026-07-03T10:30:15.456Z", "level": "INFO", "logger": "dmsa.gradient.aggregator", "message": "aggregation complete", "sample_count": 3, "cluster_count": 1, "conflict_count": 0}
-{"ts": "2026-07-03T10:30:15.890Z", "level": "INFO", "logger": "dmsa.toolbp.projector", "message": "tool schema updated", "tool_name": "get_date", "old_version": 1, "new_version": 2, "ops_count": 1}
+{"ts": "2026-07-03T10:30:15.123Z", "level": "INFO", "logger": "dmsa.memory.layer", "location": "dmsa.memory.layer:_write:210", "func": "_write", "line": 210, "message": "memory added", "node_id": "01HXYZ...", "content_length": 42, "requires_grad": false}
+{"ts": "2026-07-03T10:30:15.456Z", "level": "INFO", "logger": "dmsa.gradient.aggregator", "location": "dmsa.gradient.aggregator:aggregate:188", "func": "aggregate", "line": 188, "message": "aggregation complete", "sample_count": 3, "cluster_count": 1, "conflict_count": 0}
+{"ts": "2026-07-03T10:30:15.890Z", "level": "INFO", "logger": "dmsa.toolbp.projector", "location": "dmsa.toolbp.projector:project:142", "func": "project", "line": 142, "message": "tool schema updated", "tool_name": "get_date", "old_version": 1, "new_version": 2, "ops_count": 1}
 ```
 
-**生产用法**：把 stderr 重定向到文件 + 用 `jq` 实时分析：
+### 4.4 日志环境变量
+
+| 变量 | 默认 | 作用 |
+| --- | --- | --- |
+| `DMSA_LOG_LEVEL` | `INFO` | `TRACE`/`DEBUG`/`INFO`/`WARNING`/`ERROR`/`CRITICAL`/`OFF` |
+| `DMSA_LOG_FORMAT` | `text` | `text` 彩色单行，`json` 结构化 |
+| `DMSA_LOG_COLOR` | `auto` | `auto` 仅 TTY 上色；`always`/`never` 强制；尊重 `NO_COLOR`/`FORCE_COLOR` |
+| `DMSA_LOG_FILE` | 空 | 额外写滚动文件（`DMSA_LOG_FILE_MAX_BYTES` 默认 5 MiB，`DMSA_LOG_FILE_BACKUP_COUNT` 默认 3） |
+| `DMSA_CODING_MEMORY_*` | — | stdio MCP 的 stdout 是 JSON-RPC 通道，日志一律走 stderr |
+
+CLI 侧等价参数：`--log-level` / `--log-format` / `--log-file`（`dmsa-memory-http`、
+`dmsa-memory-browser`、`dmsa-memory-smoke`、`dmsa-inspect` 都支持）。
+
+INFO 级别下 `httpx` / `openai` / `urllib3` 等三方 logger 自动压到 WARNING，调
+`DMSA_LOG_LEVEL=DEBUG` 时交回根级别控制。
+
+**生产用法**：容器里直接看 `docker logs`；本机跑可以把 stderr 落文件 + `jq` 分析：
 
 ```bash
 dmsa-mcp-server --storage ~/.hermetic-dmsa/db.sqlite 2>>~/.hermetic-dmsa/server.log &

@@ -1,6 +1,9 @@
 """基于 ``contextvars`` 的轻量 trace span（PD6）。
 
 用于跨函数 / 跨 async 任务的调用链追踪。零依赖。
+
+span 退出时把耗时写入 ``dmsa.span.<name>.latency``、异常写入 ``.failures``，
+所以 L1/L2 的埋点不需要额外出口就能从 ``/metrics`` 看见。
 """
 
 from __future__ import annotations
@@ -8,12 +11,47 @@ from __future__ import annotations
 import time
 import uuid
 from collections.abc import Iterator
-from contextvars import ContextVar
+from contextlib import contextmanager
+from contextvars import ContextVar, Token
 from dataclasses import dataclass, field
 from typing import Any
 
+from dmsa.observability.metrics import get_registry
+
 # 当前活跃 span（ContextVar 跨 async task 自动隔离）
 _current_span: ContextVar[TraceSpan | None] = ContextVar("dmsa_current_span", default=None)
+
+# 当前请求/会话的 trace ID（由入口显式绑定，供日志 formatter 读取）
+_trace_id: ContextVar[str | None] = ContextVar("dmsa_trace_id", default=None)
+
+
+def bind_trace_id(trace_id: str | None) -> Token[str | None]:
+    """绑定当前上下文的 trace ID，返回可用于还原的 Token。"""
+    return _trace_id.set(trace_id)
+
+
+def reset_trace_id(token: Token[str | None]) -> None:
+    """还原 ``bind_trace_id`` 之前的 trace ID。"""
+    _trace_id.reset(token)
+
+
+def current_trace_id() -> str | None:
+    """获取当前 trace ID；未绑定时回落到活跃 span 的 ID。"""
+    explicit = _trace_id.get()
+    if explicit:
+        return explicit
+    span = _current_span.get()
+    return span.span_id if span is not None else None
+
+
+@contextmanager
+def trace_context(trace_id: str) -> Iterator[str]:
+    """在 ``with`` 块内为所有日志绑定同一个 trace ID。"""
+    token = bind_trace_id(trace_id)
+    try:
+        yield trace_id
+    finally:
+        reset_trace_id(token)
 
 
 @dataclass
@@ -91,12 +129,23 @@ class TraceSpanContext:
         return self._span
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        """退出 span, 标记异常并重置当前 span 上下文。"""
+        """退出 span, 标记异常、把耗时写进同名 Histogram, 并重置当前 span 上下文。"""
         if self._span is not None:
+            base = f"dmsa.span.{span_stem(self._name)}"
             if exc_type is not None:
                 self._span.set_attribute("error", repr(exc_val))
+                get_registry().counter(f"{base}.failures").inc()
             self._span.end()
+            get_registry().histogram(f"{base}.latency").observe(self._span.duration_seconds())
         _current_span.reset(self._token)
+
+
+def span_stem(name: str) -> str:
+    """由 span 名推出指标基名（去掉重复的 ``dmsa.`` 前缀）。
+
+    span 名全部是代码里的硬编码字面量，所以指标基数有界，不会像自由文本那样撑爆注册表。
+    """
+    return name.removeprefix("dmsa.")
 
 
 def start_span(name: str, **attributes: Any) -> TraceSpanContext:
@@ -129,7 +178,11 @@ def _walk(span: TraceSpan) -> Iterator[TraceSpan]:
 __all__ = [
     "TraceSpan",
     "TraceSpanContext",
+    "bind_trace_id",
+    "current_trace_id",
     "get_current_span",
     "iter_spans",
+    "reset_trace_id",
     "start_span",
+    "trace_context",
 ]

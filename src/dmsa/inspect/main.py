@@ -27,6 +27,7 @@ from dmsa.inspect.cli import (
     to_json,
     to_text,
 )
+from dmsa.observability import add_logging_args, apply_cli_logging
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -46,6 +47,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="output JSON instead of human-readable text",
     )
+    add_logging_args(parser)
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser("dag", help="show DAG overview (nodes / edges / types / tags)")
@@ -75,6 +77,8 @@ def main(argv: list[str] | None = None) -> int:
     """CLI 入口。"""
     parser = build_parser()
     args = parser.parse_args(argv)
+    # stdout 留给诊断结果，日志写 stderr
+    apply_cli_logging(args)
     try:
         payload: dict[str, Any]
         if args.command == "dag":

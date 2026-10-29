@@ -86,6 +86,62 @@ def test_memory_browser_filters_allows_scope_kind_and_evidence_facets(tmp_path: 
     memory.close()
 
 
+def test_memory_browser_pages_large_store_without_full_scan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """超过扫描上限的记忆库仍能按时间分页，只有后过滤查询才需要全量扫描。"""
+    import dmsa.inspect.memory_browser_data as browser_data
+
+    monkeypatch.setattr(browser_data, "MAX_SCAN_ROWS", 3)
+    monkeypatch.setattr(browser_data, "PAGE_SIZE", 2)
+    path = tmp_path / "memory.sqlite"
+    memory = _store(path)
+    for index in range(5):
+        memory.add(
+            f"bulk-request-{index}",
+            "repo-a",
+            "session-a",
+            [
+                SourceMessage(
+                    "user",
+                    f"Feature: bulk cache warmup case {index}\n"
+                    "Fix: iterate segments in stable order",
+                    timestamp=1_720_000_000 + index,
+                )
+            ],
+        )
+    memory.close()
+
+    first = read_records(path, {"sort": ["newest"], "page": ["1"]})
+    second = read_records(path, {"sort": ["newest"], "page": ["2"]})
+
+    assert first["total"] == 7
+    assert first["pages"] == 4
+    assert [row["request_id"] for row in first["records"]] == [
+        "bulk-request-4",
+        "bulk-request-3",
+    ]
+    assert [row["request_id"] for row in second["records"]] == [
+        "bulk-request-2",
+        "bulk-request-1",
+    ]
+    assert {row["id"] for row in first["records"]}.isdisjoint(
+        {row["id"] for row in second["records"]}
+    )
+
+    scoped = read_records(path, {"scope": ["repo-a"], "sort": ["oldest"]})
+    assert [row["request_id"] for row in scoped["records"]][:2] == [
+        "bug-request",
+        "bulk-request-0",
+    ]
+
+    with pytest.raises(ValueError, match="add a scope"):
+        read_records(path, {"kind": ["feature_enhancement"]})
+    # 导出全量（all=1）仍走扫描路径，因此受同一上限保护。
+    with pytest.raises(ValueError, match="add a scope"):
+        read_records(path, {"all": ["1"]})
+
+
 def test_memory_browser_reports_storage_and_stays_read_only(tmp_path: Path) -> None:
     """概要包含来源计数，浏览器数据库连接禁止写入。"""
     path = tmp_path / "memory.sqlite"

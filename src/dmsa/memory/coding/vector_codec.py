@@ -7,9 +7,19 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from array import array
 from collections.abc import Sequence
+
+
+def text_hash(text: str) -> str:
+    """按正文算稳定哈希, 作为内容寻址的向量复用键.
+
+    同一段正文在同一模型下的向量必然相同, 因此哈希相同就可以直接复用已算结果,
+    不必再次调用嵌入模型。128 位摘要足以避免碰撞。
+    """
+    return hashlib.blake2b(text.encode("utf-8"), digest_size=16).hexdigest()
 
 
 def encode_vector(vector: Sequence[float]) -> bytes:

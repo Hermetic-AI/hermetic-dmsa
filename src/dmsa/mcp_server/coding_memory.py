@@ -113,10 +113,18 @@ class CodingMemoryMCPServer:
             content_result = {
                 "content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False)}]
             }
+            _logger.debug(
+                "coding memory tool handled",
+                tool=str(name),
+                scope=self.scope,
+                payload_bytes=len(content_result["content"][0]["text"].encode("utf-8")),
+            )
             return make_response(content_result, request.id)
         except Exception as exc:
             _logger.error(
                 "coding memory MCP operation failed",
+                tool=str(name),
+                scope=self.scope,
                 error_type=type(exc).__name__,
             )
             return self._tool_error(request, "coding memory operation failed")

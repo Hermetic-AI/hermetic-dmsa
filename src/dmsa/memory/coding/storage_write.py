@@ -23,7 +23,7 @@ from dmsa.memory.coding.models import (
 from dmsa.memory.coding.schema import scope_token
 from dmsa.memory.coding.teams import record_author, register_conflict
 from dmsa.memory.coding.trust_store import ensure_stats
-from dmsa.memory.coding.vector_codec import encode_vector
+from dmsa.memory.coding.vector_codec import encode_vector, text_hash
 
 
 def existing_revision(
@@ -123,8 +123,16 @@ def publish_request(
         if fingerprint is not None:
             vector = vectors[chunk_index]
             db.execute(
-                "INSERT INTO vectors VALUES(?,?,?,?,?)",
-                (cid, user_id, fingerprint, len(vector), encode_vector(vector)),
+                "INSERT INTO vectors(chunk_id, user_id, fingerprint, dimension, vector, text_hash) "
+                "VALUES(?,?,?,?,?,?)",
+                (
+                    cid,
+                    user_id,
+                    fingerprint,
+                    len(vector),
+                    encode_vector(vector),
+                    text_hash(chunk.text),
+                ),
             )
     db.execute(
         "INSERT INTO corpus VALUES(?,?) ON CONFLICT(user_id) "

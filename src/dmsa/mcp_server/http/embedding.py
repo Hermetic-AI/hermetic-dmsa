@@ -24,7 +24,7 @@ class QwenTextEmbedding:
         api_key: str,
         dimension: int = 1024,
         *,
-        model: str = "qwen3.7-text-embedding",
+        model: str = "qwen3.7-text-embedding-flash",
         client: httpx.Client | None = None,
     ) -> None:
         """校验端点、凭据和向量维度，并可注入测试客户端。"""
@@ -41,8 +41,8 @@ class QwenTextEmbedding:
         if not api_key.strip():
             raise ConfigError("embedding API key must be nonempty")
         if type(dimension) is not int or dimension not in _QWEN_DIMENSIONS:
-            raise ConfigError("unsupported qwen3.7-text-embedding dimension")
-        if model != "qwen3.7-text-embedding":
+            raise ConfigError("unsupported qwen3.7-text-embedding-flash dimension")
+        if model != "qwen3.7-text-embedding-flash":
             raise ConfigError("unsupported Qwen embedding model")
         self.endpoint = endpoint
         self.api_key = api_key
