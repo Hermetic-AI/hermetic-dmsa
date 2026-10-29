@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import math
+import threading
+import time
 from collections.abc import Sequence
 from typing import Any
 from urllib.parse import urlsplit
@@ -16,6 +18,15 @@ _QWEN_DIMENSIONS = frozenset({256, 512, 768, 1024, 1536, 2048, 2560})
 # 保留独立指纹, 已写入的向量只在其指纹下可被稠密通道召回。
 _QWEN_MODELS = frozenset({"qwen3.7-text-embedding", "qwen3.7-text-embedding-flash"})
 _DASHSCOPE_BATCH_SIZE = 20
+# 供应商限流(429)与临时故障的重试口径: 平台并发下发多条 Add, 一次限流就会让
+# 整条写入失败, 因此适配器自己退避重试, 不把 429 抛给调用方。
+_RETRYABLE_STATUS = frozenset({408, 425, 429, 500, 502, 503, 504})
+_EMBED_RETRY_ATTEMPTS = 6
+_EMBED_RETRY_BASE_DELAY = 1.0
+_EMBED_RETRY_MAX_DELAY = 20.0
+# 出站请求并发闸门: 平台侧 Add 并发上限是 16, 每条 Add 又有多个批次,
+# 不设闸门会把供应商配额瞬间打满并触发连锁限流。
+_EMBED_MAX_CONCURRENCY = 4
 
 
 def _row_index(row: dict[str, Any]) -> int | None:
@@ -64,6 +75,7 @@ class QwenTextEmbedding:
         self.fingerprint = f"{model}:{dimension}"
         self._client = client or httpx.Client(timeout=60.0, follow_redirects=False)
         self._owns_client = client is None
+        self._gate = threading.BoundedSemaphore(_EMBED_MAX_CONCURRENCY)
 
     def embed_batch(self, texts: Sequence[str]) -> Sequence[Sequence[float]]:
         """以 document 类型嵌入记忆文本，按供应商上限拆批并保持输入顺序。"""
@@ -80,49 +92,76 @@ class QwenTextEmbedding:
             batch = list(texts[offset : offset + _DASHSCOPE_BATCH_SIZE])
             if not batch:
                 continue
-            try:
-                response = self._client.post(
-                    self.endpoint,
-                    headers={
-                        "Authorization": f"Bearer {self.api_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "model": self.model,
-                        "input": {"texts": batch},
-                        "parameters": {
-                            "dimension": self.dimension,
-                            "output_type": "dense",
-                            "text_type": text_type,
-                        },
-                    },
-                )
-                response.raise_for_status()
-                payload = response.json()
-                rows = payload["output"]["embeddings"]
-                # 两个 Qwen 模型版本返回的序号字段名不同: 旧版是 text_index,
-                # flash 版是 index。两种都要认, 否则会因取不到字段而整批失败。
-                order: list[int] = []
-                for row in rows:
-                    index = _row_index(row)
-                    if index is None:
-                        raise ValueError("invalid embedding response indices")
-                    order.append(index)
-                if len(rows) != len(batch) or sorted(order) != list(range(len(batch))):
-                    raise ValueError("invalid embedding response indices")
-                rows.sort(key=lambda row: _row_index(row) or 0)
-                vectors = [[float(value) for value in row["embedding"]] for row in rows]
-                if any(
-                    len(vector) != self.dimension
-                    or not all(math.isfinite(value) for value in vector)
-                    or not any(vector)
-                    for vector in vectors
-                ):
-                    raise ValueError("invalid embedding vector")
-            except Exception as exc:
-                raise ConfigError("Qwen embedding request failed or returned invalid data") from exc
-            output.extend(vectors)
+            output.extend(self._post_batch(batch, text_type))
         return output
+
+    def _post_batch(self, batch: list[str], text_type: str) -> list[list[float]]:
+        """发送一批并校验结构；限流与临时故障按退避重试。
+
+        一次 Add 的全部切片共用同一个请求，供应商一旦限流整条写入就失败，
+        因此这里必须自己退避重试，不能把 429 直接抛给调用方。
+        """
+        delay = _EMBED_RETRY_BASE_DELAY
+        last: Exception | None = None
+        for attempt in range(_EMBED_RETRY_ATTEMPTS):
+            try:
+                return self._request_batch(batch, text_type)
+            except httpx.HTTPStatusError as exc:
+                last = exc
+                if exc.response.status_code not in _RETRYABLE_STATUS:
+                    raise ConfigError(
+                        "Qwen embedding request failed or returned invalid data"
+                    ) from exc
+            except httpx.TransportError as exc:
+                last = exc
+            if attempt == _EMBED_RETRY_ATTEMPTS - 1:
+                break
+            time.sleep(delay)
+            delay = min(delay * 2, _EMBED_RETRY_MAX_DELAY)
+        raise ConfigError("Qwen embedding request failed or returned invalid data") from last
+
+    def _request_batch(self, batch: list[str], text_type: str) -> list[list[float]]:
+        """发出一次批量请求并校验返回结构、索引、维度和数值。"""
+        with self._gate:
+            response = self._client.post(
+                self.endpoint,
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": self.model,
+                    "input": {"texts": batch},
+                    "parameters": {
+                        "dimension": self.dimension,
+                        "output_type": "dense",
+                        "text_type": text_type,
+                    },
+                },
+            )
+            response.raise_for_status()
+            payload = response.json()
+            rows = payload["output"]["embeddings"]
+            # 两个 Qwen 模型版本返回的序号字段名不同: 旧版是 text_index,
+            # flash 版是 index。两种都要认, 否则会因取不到字段而整批失败。
+            order: list[int] = []
+            for row in rows:
+                index = _row_index(row)
+                if index is None:
+                    raise ValueError("invalid embedding response indices")
+                order.append(index)
+            if len(rows) != len(batch) or sorted(order) != list(range(len(batch))):
+                raise ValueError("invalid embedding response indices")
+            rows.sort(key=lambda row: _row_index(row) or 0)
+            vectors = [[float(value) for value in row["embedding"]] for row in rows]
+            if any(
+                len(vector) != self.dimension
+                or not all(math.isfinite(value) for value in vector)
+                or not any(vector)
+                for vector in vectors
+            ):
+                raise ValueError("invalid embedding vector")
+            return vectors
 
     def close(self) -> None:
         """关闭内部 HTTP 客户端；注入的客户端由调用者管理。"""
