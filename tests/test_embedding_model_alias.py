@@ -49,3 +49,16 @@ def test_runtime_accepts_legacy_qwen_name(monkeypatch) -> None:
     monkeypatch.setenv("DMSA_EMBEDDING_MODEL", "qwen3.7-text-embedding")
     settings = load_settings("competition", dimension=1024)
     assert settings.embedding_model == "qwen3.7-text-embedding"
+
+
+def test_both_qwen_names_dispatch_to_native_adapter() -> None:
+    """两个 Qwen 名字都必须走 DashScope 原生适配器.
+
+    落到 OpenAI 兼容适配器时, SDK 会自己给原生端点拼上 /embeddings, 请求直接
+    400, 表现为 Add 与 Search 全部 503。
+    """
+    from dmsa.mcp_server.http.runtime import QWEN_MODELS
+
+    assert "qwen3.7-text-embedding" in QWEN_MODELS
+    assert "qwen3.7-text-embedding-flash" in QWEN_MODELS
+    assert "text-embedding-v4" not in QWEN_MODELS

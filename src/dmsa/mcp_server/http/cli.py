@@ -11,7 +11,7 @@ from dmsa.errors import ConfigError
 from dmsa.gradient.feedback import RetrievalFeedbackStore
 from dmsa.gradient.integrated import IntegratedRSI
 from dmsa.mcp_server.http.app import create_app
-from dmsa.mcp_server.http.runtime import load_settings
+from dmsa.mcp_server.http.runtime import QWEN_MODELS, load_settings
 from dmsa.memory import CodingMemory
 from dmsa.memory.coding.vector_index import QdrantVectorIndex
 from dmsa.observability import add_logging_args, apply_cli_logging, get_logger
@@ -52,7 +52,7 @@ def main(argv: list[str] | None = None) -> int:
     client = None
     embedder: Any | None = None
     if args.profile == "competition":
-        if settings.embedding_model == "qwen3.7-text-embedding-flash":
+        if settings.embedding_model in QWEN_MODELS:
             from dmsa.mcp_server.http.embedding import QwenTextEmbedding
 
             embedder = QwenTextEmbedding(

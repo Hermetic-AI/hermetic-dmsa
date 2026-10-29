@@ -12,9 +12,10 @@ from dmsa.errors import ConfigError
 # 可选的嵌入模型名。qwen3.7-text-embedding 与 qwen3.7-text-embedding-flash 是
 # 两个不同模型(实测同一条文本的向量余弦仅 0.065), 因此各自保留独立指纹,
 # 不能互相替换: 已写入的向量只在其指纹下可被稠密通道召回。
-EMBEDDING_MODELS = frozenset(
-    {"text-embedding-v4", "qwen3.7-text-embedding", "qwen3.7-text-embedding-flash"}
-)
+QWEN_MODELS = frozenset({"qwen3.7-text-embedding", "qwen3.7-text-embedding-flash"})
+# OpenAI 兼容协议那一类走 /v1/embeddings 路径, 与 DashScope 原生端点不同。
+OPENAI_MODELS = frozenset({"text-embedding-v4"})
+EMBEDDING_MODELS = QWEN_MODELS | OPENAI_MODELS
 
 
 @dataclass(frozen=True)
