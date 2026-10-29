@@ -12,6 +12,9 @@ import httpx
 from dmsa.errors import ConfigError
 
 _QWEN_DIMENSIONS = frozenset({256, 512, 768, 1024, 1536, 2048, 2560})
+# 两个 Qwen 模型名指向不同权重(实测同一条文本的向量余弦仅 0.065), 因此各自
+# 保留独立指纹, 已写入的向量只在其指纹下可被稠密通道召回。
+_QWEN_MODELS = frozenset({"qwen3.7-text-embedding", "qwen3.7-text-embedding-flash"})
 _DASHSCOPE_BATCH_SIZE = 20
 
 
@@ -41,8 +44,8 @@ class QwenTextEmbedding:
         if not api_key.strip():
             raise ConfigError("embedding API key must be nonempty")
         if type(dimension) is not int or dimension not in _QWEN_DIMENSIONS:
-            raise ConfigError("unsupported qwen3.7-text-embedding-flash dimension")
-        if model != "qwen3.7-text-embedding-flash":
+            raise ConfigError("unsupported qwen3.7-text-embedding dimension")
+        if model not in _QWEN_MODELS:
             raise ConfigError("unsupported Qwen embedding model")
         self.endpoint = endpoint
         self.api_key = api_key

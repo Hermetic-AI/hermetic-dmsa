@@ -9,6 +9,13 @@ from urllib.parse import urlsplit
 
 from dmsa.errors import ConfigError
 
+# 可选的嵌入模型名。qwen3.7-text-embedding 与 qwen3.7-text-embedding-flash 是
+# 两个不同模型(实测同一条文本的向量余弦仅 0.065), 因此各自保留独立指纹,
+# 不能互相替换: 已写入的向量只在其指纹下可被稠密通道召回。
+EMBEDDING_MODELS = frozenset(
+    {"text-embedding-v4", "qwen3.7-text-embedding", "qwen3.7-text-embedding-flash"}
+)
+
 
 @dataclass(frozen=True)
 class RuntimeSettings:
@@ -68,9 +75,9 @@ def load_settings(
     if not valid:
         raise ConfigError(f"required valid HTTP endpoint: {endpoint_env}")
     embedding_model = os.environ.get("DMSA_EMBEDDING_MODEL", "").strip()
-    if embedding_model not in {"text-embedding-v4", "qwen3.7-text-embedding-flash"}:
+    if embedding_model not in EMBEDDING_MODELS:
         raise ConfigError(
-            "DMSA_EMBEDDING_MODEL must be text-embedding-v4 or qwen3.7-text-embedding-flash"
+            "DMSA_EMBEDDING_MODEL must be one of " + ", ".join(sorted(EMBEDDING_MODELS))
         )
     embedding_key = read_secret("DMSA_EMBEDDING_API_KEY")
     return RuntimeSettings(api_key, endpoint, embedding_key, dimension, embedding_model)
