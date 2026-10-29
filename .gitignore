@@ -79,3 +79,8 @@ desktop.ini
 
 # Research papers (tracked in research/ upstream; not part of source deliverable)
 docs/papers/*.pdf
+
+# SQLite WAL 边车文件与临时构建产物
+*.sqlite3-shm
+*.sqlite3-wal
+build-logcheck*
