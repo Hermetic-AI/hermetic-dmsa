@@ -28,7 +28,7 @@ jobs:
       - name: Build dependency wheelhouse
         run: pip wheel --require-hashes --find-links vendor -r deploy/requirements.lock -w wheelhouse
       - name: Upload standalone distribution
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-distribution
           path: |
