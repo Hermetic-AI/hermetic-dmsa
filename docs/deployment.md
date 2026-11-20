@@ -142,7 +142,14 @@ docker compose exec -T memory dmsa-memory-smoke
 | DMSA_EMBEDDING_MODEL | `qwen3.7-text-embedding-flash` 或 `text-embedding-v4` |
 | DMSA_EMBEDDING_DIMENSION | Qwen 默认 1024，且须匹配模型与 Qdrant collection |
 
-缺项会拒绝启动，不创建数据库、不监听端口，也不回退至 sparse。
+Competition overlay 不给这些变量填任何默认值，缺项一律留空。缺项会拒绝启动，
+不创建数据库、不监听端口，也不回退至 sparse；失败由启动校验报出，形式是容器以
+配置错误退出，错误信息在 `docker compose logs memory` 里：
+
+```text
+required environment variable is unset: DMSA_EMBEDDING_MODEL
+```
+
 `.env.example` 提供用户指定的 Qwen DashScope 原生端点；写入按最多 20 条分批，
 并把检索文本与底库文本分别标注为 `query` / `document`。Competition 使用独立
 `competition-data` 卷，避免与 sparse 语料混用；运行时
@@ -165,6 +172,8 @@ Compose secret 路径相对于首个 Compose 文件。确保非 root UID 10001 �
 本地 Compose secret 的宿主文件应限制访问。CLI 也直接支持 `DMSA_MEMORY_API_KEY_FILE`
 和 `DMSA_EMBEDDING_API_KEY_FILE`。同一个 key 同时指定非空值和文件会报错，文件
 缺失、无法读取或为空也会报错；错误不包含文件内容。不要把 key 放进命令行或 URL。
+这条路径不要求把 key 放进环境变量：基础 Compose 文件对密钥不做插值必填，
+密钥只从挂载的 secret 文件读取。
 
 ## 本地源码安装与分发
 

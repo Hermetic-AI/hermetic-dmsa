@@ -164,6 +164,9 @@ def test_competition_container_fails_before_storage_without_credentials(stack, m
 
 def test_competition_compose_disables_development_defaults(stack) -> None:
     command, env = stack
+    # 这一条断言的前提就是"环境里没有开发默认值", 所以这里显式清掉 DMSA_* 变量,
+    # 否则夹具为拉起栈准备的临时 key 会顺着 overlay 的变量透传进来。
+    clean_env = {name: value for name, value in env.items() if not name.startswith("DMSA_")}
     result = subprocess.run(
         [
             *command,
@@ -175,7 +178,7 @@ def test_competition_compose_disables_development_defaults(stack) -> None:
             "--format",
             "json",
         ],
-        env=env,
+        env=clean_env,
         check=True,
         capture_output=True,
         text=True,

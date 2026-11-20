@@ -88,6 +88,15 @@ offline RSI loop that proposes and gates retrieval-policy changes.
 - The Docker container contract test supplies its own throwaway API key.
   `compose.yaml` declares `DMSA_MEMORY_API_KEY` as required, and the test used to
   strip every `DMSA_*` variable, so `docker compose` aborted during interpolation.
+- The Compose secrets deployment documented in `docs/deployment.md` now works as
+  written. The base Compose file no longer requires the API key at interpolation
+  time — that check aborted every multi-overlay invocation, including the one
+  that deliberately keeps the key out of the environment. A missing key is now
+  rejected by the startup validation, which exits the container with
+  `required environment variable is unset: DMSA_MEMORY_API_KEY`.
+- The competition Compose overlay no longer fills in a default embedding model.
+  The competition profile requires an explicit model, exactly as the deployment
+  guide states.
 - `opentelemetry-api` is pinned to 1.45.2, clearing CVE-2026-126360.
 - The bundled PMD archive and the pinned dependency lock agree on the archive's
   SHA-256 again.

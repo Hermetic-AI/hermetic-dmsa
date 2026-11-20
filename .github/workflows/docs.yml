@@ -43,7 +43,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: site
+          name: github-pages
           path: site
       - id: deployment
         uses: actions/deploy-pages@v4
