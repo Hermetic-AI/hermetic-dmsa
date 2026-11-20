@@ -55,6 +55,18 @@ def test_trust_decays_with_time_since_last_use() -> None:
     assert never_used < BASE_TRUST
 
 
+def test_trust_decay_is_stable_within_a_day() -> None:
+    """同一天内的时钟抖动不得改变信任度.
+
+    否则同一查询的检索分数会随时间漂移, 回放门禁分不清策略改动与时钟漂移。
+    """
+    stat = _stat(last_used=NOW)
+    baseline = compute_trust(stat, now=NOW)
+    assert compute_trust(stat, now=NOW + 3600) == baseline
+    assert compute_trust(stat, now=NOW + 86399) == baseline
+    assert compute_trust(stat, now=NOW + 86400) < baseline
+
+
 def test_trust_multiplier_is_neutral_at_base_and_bounded() -> None:
     assert trust_multiplier(BASE_TRUST, 0.1) == pytest.approx(1.0)
     assert trust_multiplier(MAX_TRUST, 0.1) > 1.0

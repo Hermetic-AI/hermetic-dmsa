@@ -71,7 +71,10 @@ def test_budget_counts_cjk_and_long_code_including_source_header(tmp_path, text)
     assert len(partial) == 1
     assert estimate_tokens(partial[0].content) < size
     assert partial[0].content.endswith("[truncated]")
-    assert memory.search("needle", "u", 1, SearchPolicy(max_tokens=size)) == [full]
+    # 预算恰好等于正文长度时不截断: 返回同一条完整证据。
+    same = memory.search("needle", "u", 1, SearchPolicy(max_tokens=size))
+    assert [hit.id for hit in same] == [full.id]
+    assert [hit.content for hit in same] == [full.content]
     memory.close()
 
 

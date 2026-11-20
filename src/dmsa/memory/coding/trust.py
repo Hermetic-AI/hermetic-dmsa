@@ -76,11 +76,16 @@ def base_trust(stat: MemoryStat) -> float:
 def compute_trust(
     stat: MemoryStat, *, now: int, half_life_days: float = DEFAULT_HALF_LIFE_DAYS
 ) -> float:
-    """计算当前信任度: 观测计数决定基线, 距上次使用的时间做半衰期衰减."""
+    """计算当前信任度: 观测计数决定基线, 距上次使用的时间做半衰期衰减.
+
+    衰减以整日为粒度。半衰期是 30 天, 秒级抖动对排序没有实际意义, 却会让
+    同一查询在跨秒时给出不同分数: 回放门禁就分不清策略改动与时钟漂移,
+    使用者也无法复现上一次检索结果。因此同一天内信任度恒定, 跨天才衰减。
+    """
     if half_life_days <= 0:
         return base_trust(stat)
     anchor = stat.last_used if stat.last_used is not None else stat.created_at
-    age_days = max(0.0, (now - anchor) / SECONDS_PER_DAY)
+    age_days = float(max(0, (now - anchor) // int(SECONDS_PER_DAY)))
     decayed = base_trust(stat) * math.pow(0.5, age_days / half_life_days)
     return min(MAX_TRUST, max(MIN_TRUST, decayed))
 

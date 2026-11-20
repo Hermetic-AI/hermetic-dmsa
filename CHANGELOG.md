@@ -96,6 +96,11 @@ offline RSI loop that proposes and gates retrieval-policy changes.
 - The coding-memory agent adapter sends and receives UTF-8 explicitly, so a
   payload containing non-ASCII text is no longer corrupted or rejected by the
   platform default encoding.
+- The retrieval score no longer drifts with the wall clock. Trust decay is
+  quantised to whole days — the half-life is 30 days, so second-level jitter was
+  meaningless noise that made the same query return a different score across a
+  second boundary, and left the replay gate unable to tell a policy change from
+  clock drift.
 - The Docker container contract test supplies its own throwaway API key.
   `compose.yaml` declares `DMSA_MEMORY_API_KEY` as required, and the test used to
   strip every `DMSA_*` variable, so `docker compose` aborted during interpolation.
