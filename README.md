@@ -42,6 +42,7 @@ line that mattered.
 | **Finds the applicable** | Exact path/symbol matching, FTS5 full-text search, and an optional dense channel are fused through RRF, then filtered by scope, condition, and version. |
 | **Shows its sources** | Every returned chunk carries a provenance header; experience cards are deterministic views over source text, never invented summaries. |
 | **Admits uncertainty** | A "reported success" stays a reported success. Test evidence proves only that test, not the patch. |
+| **Tracks supersession** | Same-session updates keep the old card and record lineage; the new card is marked `[supersedes]` so outdated advice is visible (off by default). |
 | **Improves offline** | A retrieval-policy change is proposed, replayed against paired runs, and accepted only if a frozen replay gate finds no regression. |
 
 ## Architecture

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dmsa.memory import CodingMemory, SourceMessage
-from dmsa.memory.coding.episodes import EPISODE_PREFIX, build_episode
+from dmsa.memory.coding.episodes import EPISODE_PREFIX, SUPERSEDED_OUTCOME, build_episode
 from dmsa.memory.coding.extraction import extract
 
 _SESSION = (
@@ -43,15 +43,18 @@ def test_build_episode_returns_none_without_reusable_content() -> None:
     assert build_episode(()) is None
 
 
-def test_add_stores_one_episode_card_per_session(tmp_path) -> None:
-    """同一会话多次写入只保留最新一张经验卡."""
+def test_add_stores_one_active_episode_card_per_session(tmp_path) -> None:
+    """同一会话只保留一张 active 卡, 旧卡标 superseded 以备 lineage 检测."""
     memory = CodingMemory(tmp_path / "episode.db")
     memory.add("r1", "u", "s", list(_SESSION))
     memory.add("r2", "u", "s", [SourceMessage("assistant", "补充：还需要覆盖上界用例。")])
     rows = memory.store.rows("u")
     cards = [row for row in rows if row["role"] == "episode"]
-    assert len(cards) == 1
-    assert "max(lower, min(upper, value))" in str(cards[0]["text"])
+    assert len(cards) == 2
+    active = [row for row in cards if row["outcome"] != SUPERSEDED_OUTCOME]
+    assert len(active) == 1
+    assert "max(lower, min(upper, value))" in str(active[0]["text"])
+    assert any(row["outcome"] == SUPERSEDED_OUTCOME for row in cards)
     memory.close()
 
 

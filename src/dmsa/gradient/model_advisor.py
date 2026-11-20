@@ -99,6 +99,8 @@ class ModelAssistedPolicyProposer:
                 "missing_structure",
                 "redundancy",
                 "stale_evidence",
+                "superseded_evidence",
+                "overclaimed_verification",
                 "unknown",
             }
         ]

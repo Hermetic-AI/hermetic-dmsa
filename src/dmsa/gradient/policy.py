@@ -106,4 +106,12 @@ def propose_policy(
         elif item.kind == "missing_structure":
             # 证据缺少代码结构时, 增加骨架摘要深度。
             proposals.append(current.changed(skeleton_depth=min(40, policy.skeleton_depth + 2)))
+        elif item.kind == "superseded_evidence":
+            # 取回了已被新经验取代的旧卡时, 打开 lineage 降权通道。
+            proposals.append(current.changed(lineage_window=min(3, policy.lineage_window + 1)))
+        elif item.kind == "overclaimed_verification":
+            # 声称验证通过但缺乏锚点支撑时, 提高验证强度先验的权重。
+            proposals.append(
+                current.changed(verification_weight=min(1.0, policy.verification_weight + 0.1))
+            )
     return tuple(dict.fromkeys(proposals))

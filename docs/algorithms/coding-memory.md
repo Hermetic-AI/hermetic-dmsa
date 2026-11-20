@@ -182,6 +182,16 @@ embedding 在写事务之外执行，事务内再次检查幂等键。多个实�
 ABA 指纹。`save_repo_snapshot(user_id, root, repo=...)` 写入与检索相同的分区，因此仓库级
 失效标注只对该仓库的历史证据生效。
 
+## Lineage 通道（默认关闭）
+
+`memory_lineage` 表只登记**派生层**的元数据，不复制原文，也不为每条切片建 PMD 节点：原文仍以 `chunks` 为唯一事实来源。边类型是封闭的 `DERIVED_FROM`（经验卡 → 本次原文切片）与 `SUPERSEDED_BY`（旧卡 → 同会话新卡）。写入经验卡时在同一事务内登记两种边；同会话更新不再物理删除旧卡，而是把旧卡 `outcome` 标为 `superseded` 并保留精确词项与 FTS 索引，因此旧经验仍可被召回。
+
+`SearchPolicy.lineage_window`（默认 `0`，范围 `[0, 3]`）控制这条通道：为 `0` 时行为与旧版完全一致——装包阶段照常过滤 `superseded` 卡；大于 `0` 时旧卡可以进入结果、带 `[superseded by ...]` 标记并降权（幅度 `2 × adjustment_weight × 0.01`，与 RRF 相邻名次差同量级）。由于新旧卡文本高度相似，旧卡常被近重过滤压掉，因此**新卡同时带 `[supersedes ...]` 标记**，保证"这条经验已有更新版本"能真正送到 Agent。降权只发生在已有候选上，不创建候选、不覆盖通道 RRF。
+
+`SearchPolicy.verification_weight`（默认 `0`，范围 `[0, 1]`）控制验证强度先验：只在候选切片或其派生卡存在 `test` 锚点、且锚点路径与证据路径**显式重合**时加成；`pytest ... passed` 这类自述验证不构成锚点，测试通过也不推断它覆盖了整个补丁。两种先验都只能通过离线 RSI 的配对回放晋升：`superseded_evidence` 提案打开 lineage 通道，`overclaimed_verification` 提案提高验证权重；服务不会自行激活。
+
+边界：这是"派生层 lineage"，不是完整 PMD DAG——`MemoryLayer` 与 `CodingMemory` 仍未共享记忆；边只表达"由谁派生"和"被谁取代"，不表达调用图、数据流或跨文件依赖；近重过滤仍可能在端到端检索中压掉旧卡，所以 `[supersedes]` 标记比 `[superseded]` 更可靠。
+
 ## 扩展能力
 
 写入门控与遗忘淘汰、条目信任模型与因果归因、端到端有效性度量、程序性记忆、团队作用域

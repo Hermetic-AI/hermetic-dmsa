@@ -6,6 +6,7 @@ from collections.abc import Mapping
 
 from dmsa.memory.coding.budget import estimate_tokens
 from dmsa.memory.coding.code_anchors import anchor_summary
+from dmsa.memory.coding.episode_store import REL_SUPERSEDED_BY
 from dmsa.memory.coding.episodes import SUPERSEDED_OUTCOME
 from dmsa.memory.coding.models import SearchHit, SearchPolicy
 from dmsa.memory.coding.packing import select_evidence
@@ -128,7 +129,9 @@ def build_hits(
         # 历史整文件写入是旧快照, 直接注入会让当前仓库回退到过期版本。
         if policy.experience_weight and is_stale_write(body):
             continue
-        if str(row["outcome"]) == SUPERSEDED_OUTCOME:
+        # 默认保持旧行为: superseded 卡不进入结果。只有显式打开 lineage
+        # 通道时, 才把它作为候选返回并标注, 供 Agent 判断"已被取代"。
+        if policy.lineage_window == 0 and str(row["outcome"]) == SUPERSEDED_OUTCOME:
             continue
         ranked.append((cid, ranks[cid], dict(row)))
     selected = select_evidence(ranked, top_k, policy)
@@ -142,12 +145,28 @@ def build_hits(
         if is_stale_write(head)
     }
     anchors = store.anchors_by_ids(user_id, tuple(item[0] for item in selected))
+    superseded = (
+        store.lineage_targets(user_id, tuple(item[0] for item in selected), REL_SUPERSEDED_BY)
+        if policy.lineage_window > 0
+        else {}
+    )
+    # 新旧卡文本近乎相同, 旧卡常被近重过滤掉; 因此同时在新卡上标注它取代了谁,
+    # 让"这条经验已有更新版本"的信息确实能送到 Agent。
+    supersedes = (
+        store.lineage_sources(user_id, tuple(item[0] for item in selected), REL_SUPERSEDED_BY)
+        if policy.lineage_window > 0
+        else {}
+    )
     hits: list[SearchHit] = []
     char_budget, token_budget = policy.max_chars, policy.max_tokens
     for cid, score, item in selected:
         if str(item["message_id"]) in stale_messages:
             continue
         source = _header(item)
+        if superseded.get(cid):
+            source += "[superseded by " + " ".join(superseded[cid][:3]) + "]\n"
+        if supersedes.get(cid):
+            source += "[supersedes " + " ".join(supersedes[cid][:3]) + "]\n"
         chunk_anchors = anchors.get(cid, ())
         summary = anchor_summary(chunk_anchors)
         if summary:

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import sqlite3
 
+from dmsa.memory.coding.code_anchors import KIND_TEST, extract_anchors
+from dmsa.memory.coding.episode_store import REL_DERIVED_FROM, REL_SUPERSEDED_BY
 from dmsa.memory.coding.evidence_pack import build_hits
 from dmsa.memory.coding.experiences import applicability_adjustment, extract_experience_card
 from dmsa.memory.coding.extraction import Chunk
@@ -34,6 +36,40 @@ from dmsa.memory.coding.vector_index import VectorIndex
 # 显式结果标签是排序先验: 声称成功的来源优先, 已观测失败的来源降权。
 # 幅度与通道 RRF 分数同量级, 才能在通道排名接近时改变先后。
 _OUTCOME_BONUS = {"reported_success": 0.02, "observed_failure": -0.008}
+# lineage/验证强度先验的单步幅度: 与 RRF 相邻名次差 (~0.0025) 同量级,
+# 只在同分附近改变先后, 不允许整体压过通道排名。
+_VERIFICATION_DELTA = 0.01
+
+
+def _test_paths(text: str) -> set[str]:
+    """取文本中显式测试锚点的路径; 纯词面匹配, 不推断测试覆盖范围."""
+    return {
+        anchor.path for anchor in extract_anchors(text) if anchor.kind == KIND_TEST and anchor.path
+    }
+
+
+def _superseded_map(
+    store: CodingStore, user_id: str, ids: tuple[str, ...], hops: int
+) -> dict[str, tuple[str, ...]]:
+    """有限跳数地追踪后继经验卡, 返回每个原始候选的后继集合."""
+    collected: dict[str, set[str]] = {}
+    current = ids
+    visited: set[str] = set(ids)
+    for _ in range(hops):
+        found = store.lineage_targets(user_id, current, REL_SUPERSEDED_BY)
+        if not found:
+            break
+        for source, targets in found.items():
+            collected.setdefault(source, set()).update(targets)
+        current = tuple(
+            dict.fromkeys(
+                target for targets in found.values() for target in targets if target not in visited
+            )
+        )
+        visited.update(current)
+        if not current:
+            break
+    return {key: tuple(sorted(values)) for key, values in collected.items()}
 
 
 class CodingRetriever:
@@ -143,6 +179,22 @@ class CodingRetriever:
         """在基础分上叠加经验、结果、证据质量与信任调整; 就地更新 ranks."""
         card_rows = self.store.rows_by_ids(user_id, tuple(ranks))
         anchors_map = self.store.anchors_by_ids(user_id, tuple(ranks))
+        superseded = (
+            _superseded_map(self.store, user_id, tuple(ranks), policy.lineage_window)
+            if policy.lineage_window > 0
+            else {}
+        )
+        derived = (
+            self.store.lineage_sources(user_id, tuple(ranks), REL_DERIVED_FROM)
+            if policy.verification_weight > 0
+            else {}
+        )
+        derived_rows: dict[str, sqlite3.Row] = {}
+        if derived:
+            card_ids = tuple(dict.fromkeys(cid for group in derived.values() for cid in group))
+            derived_rows = {
+                str(row["id"]): row for row in self.store.rows_by_ids(user_id, card_ids)
+            }
         for row in card_rows:
             text = str(row["text"])
             card = extract_experience_card(
@@ -172,6 +224,23 @@ class CodingRetriever:
             # 快照确认失效的证据轻微降权, 但保留原文供人工判断。
             if snapshot is not None and stale_anchors(snapshot, anchors_map.get(key, ())):
                 ranks[key] = ranks.get(key, 0.0) - policy.stale_penalty
+            unit = policy.adjustment_weight * _VERIFICATION_DELTA
+            if key in superseded:
+                # 有同源后继时降权, 幅度是验证加成的两倍; 默认关闭时不触发。
+                ranks[key] = ranks.get(key, 0.0) - 2 * unit
+            if derived.get(key) and policy.verification_weight > 0:
+                # 验证强度只在"测试锚点路径"与"证据路径"重合时加成:
+                # 测试声称通过不等于它验证了整条经验, 只认显式锚点。
+                tests = _test_paths(text)
+                paths = {path for path in str(row["paths"]).split() if path}
+                for card_id in derived[key]:
+                    card_row = derived_rows.get(card_id)
+                    if card_row is None:
+                        continue
+                    tests |= _test_paths(str(card_row["text"]))
+                    paths |= {path for path in str(card_row["paths"]).split() if path}
+                if tests & paths:
+                    ranks[key] = ranks.get(key, 0.0) + policy.verification_weight * unit
         # 信任度参与调分: 已被观测证明有用的条目上调, 已被判定无用的条目下调;
         # 已淘汰的条目不再进入结果, 但原文仍可按 ID 追溯。
         evicted = evicted_ids(self.store.db, user_id, tuple(ranks))

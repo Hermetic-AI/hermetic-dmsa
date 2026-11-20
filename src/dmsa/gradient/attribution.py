@@ -21,7 +21,7 @@ from dmsa.memory import apply_verdict, ensure_stats_table, scope_key
 
 # 明确指向「召回内容本身有错」的失败类型, 只有这些才对召回条目记反驳.
 CONTRADICTING_KINDS: frozenset[str] = frozenset(
-    {"coarse_chunk", "identifier_confusion", "stale_evidence"}
+    {"coarse_chunk", "identifier_confusion", "stale_evidence", "superseded_evidence"}
 )
 
 

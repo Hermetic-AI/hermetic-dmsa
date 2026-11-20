@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Default-off lineage channels: same-session episode updates now mark the old
+  card `superseded` instead of deleting it, record `DERIVED_FROM` /
+  `SUPERSEDED_BY` edges, and expose `[supersedes]` / `[superseded]` markers
+  through `SearchPolicy.lineage_window`.
+- Default-off anchor-scoped verification prior (`verification_weight`): only
+  explicit test anchors whose paths overlap the evidence paths affect ranking.
+- `superseded_evidence` and `overclaimed_verification` diagnoses now generate
+  bounded RSI policy proposals.
+
 ## [0.2.0] — Unreleased
 
 The 0.2.0 line introduces the Coding Memory engine: a provenance-aware store for

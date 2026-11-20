@@ -32,6 +32,8 @@ class FeedbackContract(ScopeContract):
         "missing_structure",
         "redundancy",
         "stale_evidence",
+        "superseded_evidence",
+        "overclaimed_verification",
         "unknown",
     ] = "unknown"
     relevant_ids: list[StrictStr] = Field(default_factory=list, max_length=100)

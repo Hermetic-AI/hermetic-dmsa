@@ -120,6 +120,8 @@ class RetrievalFeedbackStore:
             "missing_structure",
             "redundancy",
             "stale_evidence",
+            "superseded_evidence",
+            "overclaimed_verification",
             "unknown",
         }:
             raise OfflineRSIError("invalid feedback")
