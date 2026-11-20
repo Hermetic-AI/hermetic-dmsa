@@ -19,6 +19,9 @@ jobs:
   build:
     name: Build docs
     runs-on: ubuntu-latest
+    outputs:
+      # Pages 未启用时不做部署, 但文档构建本身必须始终通过。
+      pages_ready: ${{ steps.pages.outcome == 'success' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -31,18 +34,25 @@ jobs:
       - name: Build mkdocs
         run: mkdocs build --strict
       - name: Setup Pages
+        id: pages
+        # 仓库管理员在 Settings → Pages 把 Source 设为 GitHub Actions 之前,
+        # 创建 Pages 站点需要超出 GITHUB_TOKEN 的权限。这里不阻断构建,
+        # Pages 就绪后同一流水线会自动完成发布。
+        continue-on-error: true
         uses: actions/configure-pages@v5
         with:
-          # 仓库尚未启用 Pages 时由本步骤自动启用, 免去一次手工设置。
           enablement: true
       - name: Upload Pages artifact
+        if: steps.pages.outcome == 'success'
         uses: actions/upload-pages-artifact@v3
         with:
           path: site
 
   deploy:
     name: Deploy to GitHub Pages
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: >-
+      github.event_name == 'push' && github.ref == 'refs/heads/main'
+      && needs.build.outputs.pages_ready == 'true'
     needs: build
     runs-on: ubuntu-latest
     environment:
