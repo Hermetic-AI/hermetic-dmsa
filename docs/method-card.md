@@ -26,8 +26,8 @@ correct, or run tests.
 with bug and feature tasks plus four nested distractor-count levels. It
 measures retrieval recall/NDCG, misleading-memory rate, localization against a
 held-out path label, and optional agent reports. The direct API adapter's
-resolution/test fields are self-reported. No run against the official 150-task
-suite is included in this repository.
+resolution/test fields are self-reported. No run against a protected official
+task suite is included in this repository.
 
 ## Limitations and risks
 
@@ -39,12 +39,12 @@ suite is included in this repository.
 - A single HTTP API key currently spans every supplied `user_id`; this is not a
   multi-tenant authorization system.
 - Dense mode sends source text to the configured embedding provider.
-- No published model leaderboard result or official competition score is
+- No published model leaderboard result or official platform score is
   claimed here.
 
 ## Reproducibility
 
 Every local artifact contains manifest and configuration hashes, seed,
 repository commit when available, arm/noise slices, and per-run measurements.
-See [`competition-runbook.md`](competition-runbook.md) and
+See [`evaluation-runbook.md`](evaluation-runbook.md) and
 [`security-and-data.md`](security-and-data.md).

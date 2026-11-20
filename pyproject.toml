@@ -3,7 +3,7 @@
 # 注意：核心运行时零 LLM 依赖；仅 dev / all extras 引入可选依赖。
 
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -12,9 +12,10 @@ version = "0.2.0.dev0"
 description = "Hermetic Differentiated Memory Self-evolving Agent — Production-grade memory layer for LLM agents with provenance-aware DAG, textual backpropagation, semantic gradient aggregation, and tool-use AST projection."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { file = "LICENSE" }
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 authors = [
-    { name = "DMSA Authors" },
+    { name = "Hermetic AI Contributors" },
 ]
 keywords = [
     "llm-agent",
@@ -28,7 +29,6 @@ keywords = [
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
@@ -89,9 +89,10 @@ vector = [
 
 [project.urls]
 Homepage = "https://github.com/Hermetic-AI/hermetic-dmsa"
+Repository = "https://github.com/Hermetic-AI/hermetic-dmsa"
+Documentation = "https://hermetic-ai.github.io/hermetic-dmsa/"
 Issues = "https://github.com/Hermetic-AI/hermetic-dmsa/issues"
 Changelog = "https://github.com/Hermetic-AI/hermetic-dmsa/blob/main/CHANGELOG.md"
-Paper = "https://arxiv.org/abs/XXXX.XXXXX"
 
 [project.scripts]
 # L4 入口：MCP server CLI
@@ -183,6 +184,10 @@ ignore_missing_imports = true  # 路径依赖的 pmd 没装 type stubs
 [[tool.mypy.overrides]]
 module = ["qdrant_client.*"]
 ignore_missing_imports = true  # vector extra 是可选依赖
+
+[[tool.mypy.overrides]]
+module = ["markdown.*"]
+ignore_missing_imports = true  # mkdocs 构建期依赖, 无类型标记
 
 [tool.pytest.ini_options]
 # PD2：覆盖率门禁 80%

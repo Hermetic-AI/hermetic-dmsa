@@ -1,9 +1,9 @@
 include LICENSE NOTICE THIRD_PARTY_LICENSES.md Dockerfile compose.yaml .dockerignore .env.example
-include Makefile AGENTS.md CONTRIBUTING.md
+include Makefile AGENTS.md CONTRIBUTING.md CODE_OF_CONDUCT.md SECURITY.md CITATION.cff
+include README.md README.zh-CN.md mkdocs.yml mkdocs_hooks.py
 recursive-include vendor *.tar.gz *.md SHA256SUMS
 recursive-include deploy *.yaml *.lock
 recursive-include docs *.md
-prune docs/superpowers
-include tests/container_contract.py tests/conftest.py
 recursive-include examples *.py
 recursive-include integrations *.md *.json *.toml
+include tests/container_contract.py tests/conftest.py

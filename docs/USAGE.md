@@ -137,7 +137,7 @@ PYTHONPATH=src python examples/01_quickstart_mcp.py
 
 ✅ **看到 7 个工具 = 接入成功**。
 
-> 详细文档：[`integrations/claude-code/README.md`](../integrations/claude-code/README.md)
+> 详细文档：[`integrations/claude-code/README.md`](https://github.com/Hermetic-AI/hermetic-dmsa/blob/main/integrations/claude-code/README.md)
 
 ---
 
@@ -169,7 +169,7 @@ PYTHONPATH=src python examples/01_quickstart_mcp.py
 
 ✅ **看到 7 个 `dmsa_*` 工具 = 接入成功**。
 
-> 详细文档：[`integrations/opencode/README.md`](../integrations/opencode/README.md)
+> 详细文档：[`integrations/opencode/README.md`](https://github.com/Hermetic-AI/hermetic-dmsa/blob/main/integrations/opencode/README.md)
 
 ---
 
@@ -196,7 +196,7 @@ Hermes 会扫描 `~/.hermes/skills/`，识别 `hermetic-dmsa` skill，并通过 
 
 ✅ **Hermes 在对话中提到 dmsa 工具 = 接入成功**。
 
-> 详细文档：[`integrations/hermes/README.md`](../integrations/hermes/README.md)
+> 详细文档：[`integrations/hermes/README.md`](https://github.com/Hermetic-AI/hermetic-dmsa/blob/main/integrations/hermes/README.md)
 
 ---
 

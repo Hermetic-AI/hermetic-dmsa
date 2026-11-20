@@ -44,11 +44,16 @@ coverage.xml
 *~
 .DS_Store
 
+# Agent 工具的本地私有配置
+.claude/
+.cursor/
+
 # mypy / ruff
 .mypy_cache/
 .ruff_cache/
 
 # Build artifacts
+site/
 *.whl
 *.tar.gz
 !vendor/pmd-*.tar.gz
@@ -84,3 +89,8 @@ docs/papers/*.pdf
 *.sqlite3-shm
 *.sqlite3-wal
 build-logcheck*
+
+# Local promotion material and leaderboard snapshots (not part of the source distribution)
+/aml-xhs-*/
+/*.zip
+/恭喜入围子能力榜前三*/

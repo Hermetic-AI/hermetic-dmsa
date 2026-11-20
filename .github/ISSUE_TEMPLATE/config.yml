@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Question or usage help
+    url: https://github.com/Hermetic-AI/hermetic-dmsa/discussions
+    about: Ask about how to use hermetic-dmsa, or open a discussion thread.
+  - name: Security vulnerability
+    url: https://github.com/Hermetic-AI/hermetic-dmsa/security/advisories/new
+    about: Report a vulnerability privately. Please do not open a public issue.
+  - name: Documentation site
+    url: https://hermetic-ai.github.io/hermetic-dmsa/
+    about: Read the full documentation before filing an issue.

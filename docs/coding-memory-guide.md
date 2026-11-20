@@ -1,6 +1,6 @@
 # Coding Memory + RSI：技术方案与实操指南
 
-适用版本：`0.2.0.dev0`，`feat/coding-memory-rsi` 分支，更新于 2026-10-22。
+适用版本：`0.2.0.dev0`。
 
 按“理解 → 启动 → 接口 → Agent 接入 → 实验 → RSI”阅读。先跑 sparse-dev，即可完成无模型服务的记忆验证。
 
@@ -8,12 +8,15 @@
 |---|---|
 | 理解 DMSA + RSI | [技术方案](#1-最新技术方案) |
 | 启动服务 | [安装与启动](#2-安装与启动) |
-| 调用比赛接口 | [Add / Search](#3-比赛对应的-http-接口) |
+| 调用 HTTP 接口 | [Add / Search](#3-http-接口契约) |
 | 让其他 Agent 使用记忆 | [客户端与接入提示词](#4-如何接入其他-agent) |
 | 自己比较效果 | [双 Agent 与对照实验](#5-自己用其他-agent-测试记忆效果) |
 | 查库、跑验证、加载策略 | [查看与验证](#6-如何查看与验证) |
 
-2026-10-22 已在 Windows 本机验证本指南的 HTTP 启动、Python 客户端 Add/Search、幂等重试与冲突、scope 隔离、PowerShell 请求、只读查库和已接受策略的加载示例。未执行付费模型调用、真实外部 Agent 解题或官方比赛联调。
+设计依据见 [design/coding-memory.md](design/coding-memory.md)；已实现的算法细节见
+[algorithms/](algorithms/coding-memory.md)。本指南的 HTTP 启动、Python 客户端 Add/Search、幂等重试与
+冲突、scope 隔离、PowerShell 请求、只读查库和已接受策略的加载示例均已在 Windows
+本机验证；付费模型调用与外部评测联调未执行。
 
 ## 1. 最新技术方案
 
@@ -82,13 +85,13 @@ flowchart LR
 
 当前实现离线检索策略内循环：开发案例重复出现“精确词漏检 / 证据重复 / 上下文缺失”，才提出小幅权重或窗口调整；在同一批标注、同一份语料、相同预算下运行新旧 Search。固定门槛要求**每个案例的相关切片召回率都不下降，至少一个案例改善**。
 
-语料指纹包含数据库身份、全局变更代数和 scope epoch；回放时语料改变会拒绝报告。注册表保存候选、报告、决策与活动版本。它不自动改代码、改模型或学习正式比赛答案，外层 RSI 尚未落地。
+语料指纹包含数据库身份、全局变更代数和 scope epoch；回放时语料改变会拒绝报告。注册表保存候选、报告、决策与活动版本。它不自动改代码、改模型或学习受保护评测集的答案，外层 RSI 尚未落地。
 
 ### 1.4 与原有 DMSA 的关系
 
 | 路径 | 引擎与存储 | 提供什么 |
 |---|---|---|
-| 新版 HTTP `/add`、`/search` | CodingMemory，Coding SQLite | 比赛记忆、历史代码证据检索 |
+| 新版 HTTP `/add`、`/search` | CodingMemory，Coding SQLite | 记忆写入、历史代码证据检索 |
 | 原有 MCP `dmsa_*` 工具 | MemoryLayer，PMD DAG SQLite | 血缘、反馈、文本梯度、ToolBP |
 
 两者没有共享记忆桥。不要给它们传同一个数据库文件；MCP 写入的记录不会出现在 HTTP Search 中。SGA/ToolBP 目前也不自动驱动 Coding Memory 的 RSI。
@@ -98,7 +101,7 @@ flowchart LR
 ### 2.1 本地开发模式
 
 独立 clone 已包含固定 PMD 源码发行包 `vendor/pmd-0.1.0.tar.gz`，无需 sibling
-checkout；出处与升级方式见 [vendor/README.md](../vendor/README.md)。不要安装
+checkout；出处与升级方式见 [vendor/README.md](https://github.com/Hermetic-AI/hermetic-dmsa/blob/main/vendor/README.md)。不要安装
 来源不明的同名 `pmd` 包。容器一键启动与持久化验收见[部署指南](deployment.md)。
 
 在 `hermetic-dmsa/` 中执行。Windows PowerShell：
@@ -150,9 +153,11 @@ Bash 用 `export NAME=value` 设置同名变量。替换 workspace endpoint 和�
 
 先用独立数据库测试向量模式：从 sparse-dev 切换不会自动给已有记录补向量。模型 fingerprint 改变后，旧向量不会自动转换，需从原始历史重建到新库。
 
-## 3. 比赛对应的 HTTP 接口
+## 3. HTTP 接口契约
 
-赛题的分工是：记忆系统实现 **Add + Search**，平台负责让 Agent 回答、打分与复核。下面是本版实现的 HTTP 合同；正式接入前，仍需用官方 SDK/样例确认 URL、认证、字段与响应封装，必要时增加薄适配器。本地通过不代表平台验收通过。
+记忆系统实现 **Add + Search**，调用方的 Coding Agent 负责回答与执行。下面是本版实现的
+HTTP 合同；正式接入前，仍需用目标平台的 SDK/样例确认 URL、认证、字段与响应封装，
+必要时增加薄适配器。本地通过不代表平台验收通过。
 
 ### 3.1 地址和认证
 
@@ -451,53 +456,56 @@ Agent 从 stdin 收到 JSON：`query`、`repo_path`、`test_file`、`target_path
 
 ### 6.0 线上自测接口
 
-生产部署（百度云 `106.12.139.107`，`/home/jensen/hermetic-dmsa`，compose 叠加 `compose.yaml` + `deploy/compose.competition.yaml` + `deploy/compose.offline.yaml`）的自测入口如下。密钥在服务器 `.env` 的 `DMSA_MEMORY_API_KEY`，不要写进仓库或日志。
+把服务部署到自己的服务器（compose 叠加 `compose.yaml` + `deploy/compose.competition.yaml` + `deploy/compose.offline.yaml`）后，自测入口如下。下文统一用 `<origin>` 表示你的公网根地址（例如 `https://memory.example.com`），实际地址写在自己的部署环境变量里，不要写进仓库。密钥在服务器 `.env` 的 `DMSA_MEMORY_API_KEY`，不要写进仓库或日志。
 
 nginx 用 `location /v1/memories/ { proxy_pass http://127.0.0.1:18000/; }` 剥掉前缀后转发，
 所以 `/v1/memories` 之后的任意子路径都直接映射到记忆服务的同名路由。
 
 | 用途 | 入口 | 认证 | 说明 |
 |---|---|---|---|
-| 健康检查 | `GET https://jensenlyz.cn/health` | 免认证 | 返回 `{"ok":true}` |
-| 写入记忆 | `POST https://jensenlyz.cn/v1/memories/add` | `Authorization: Bearer <key>` | 幂等写入；同一 `request_id` 换内容返回 409 |
-| 检索记忆 | `POST https://jensenlyz.cn/v1/memories/search` | `Authorization: Bearer <key>` | 返回 `trace_id` 与 `data[]`（`id` / `content` / `score`） |
-| 检索反馈 | `POST https://jensenlyz.cn/v1/memories/feedback` | `Authorization: Bearer <key>` | 保存 trace 反馈，新反馈触发一次有界进化；重复反馈返回 `duplicate_feedback` |
-| 任务结果上报 | `POST https://jensenlyz.cn/v1/memories/task_result` | `Authorization: Bearer <key>` | 只记录事实，返回 `attribution` 因果归因结果，不触发进化 |
-| 提案 | `POST https://jensenlyz.cn/v1/memories/rsi/propose` | `Authorization: Bearer <key>` | 重试当前 scope 的策略提案 |
-| 进化 | `POST https://jensenlyz.cn/v1/memories/rsi/evolve` | `Authorization: Bearer <key>` | 提案 + 回放 + 门禁激活，返回 `status` 与 `version` |
-| 回滚 | `POST https://jensenlyz.cn/v1/memories/rsi/rollback` | `Authorization: Bearer <key>` | 恢复该 scope 已记录的策略版本 |
+| 健康检查 | `GET <origin>/health` | 免认证 | 返回 `{"ok":true}` |
+| 写入记忆 | `POST <origin>/v1/memories/add` | `Authorization: Bearer <key>` | 幂等写入；同一 `request_id` 换内容返回 409 |
+| 检索记忆 | `POST <origin>/v1/memories/search` | `Authorization: Bearer <key>` | 返回 `trace_id` 与 `data[]`（`id` / `content` / `score`） |
+| 检索反馈 | `POST <origin>/v1/memories/feedback` | `Authorization: Bearer <key>` | 保存 trace 反馈，新反馈触发一次有界进化；重复反馈返回 `duplicate_feedback` |
+| 任务结果上报 | `POST <origin>/v1/memories/task_result` | `Authorization: Bearer <key>` | 只记录事实，返回 `attribution` 因果归因结果，不触发进化 |
+| 提案 | `POST <origin>/v1/memories/rsi/propose` | `Authorization: Bearer <key>` | 重试当前 scope 的策略提案 |
+| 进化 | `POST <origin>/v1/memories/rsi/evolve` | `Authorization: Bearer <key>` | 提案 + 回放 + 门禁激活，返回 `status` 与 `version` |
+| 回滚 | `POST <origin>/v1/memories/rsi/rollback` | `Authorization: Bearer <key>` | 恢复该 scope 已记录的策略版本 |
 | 容器内自检 | `docker compose ... exec -T memory dmsa-memory-smoke` | 容器内已带密钥 | 校验 `/health`、`/add`、`/search` |
 | 能力状态 | 容器内 `http://127.0.0.1:8000/status` | `Authorization: Bearer <key>` | embedding / vector_index / RSI `active_policy` 是否生效；公网是否可达取决于 nginx 转发，未验证前按容器内使用 |
 | 指标快照 | 容器内 `http://127.0.0.1:8000/metrics` | `Authorization: Bearer <key>` | 分路由延迟、检索交付条数、上游调用延迟；进程重启清零 |
-| 只读记忆浏览器 | `ssh -L 18765:127.0.0.1:18765 root@106.12.139.107` 后开 `http://127.0.0.1:18765` | 仅内网 | `/feedback`、`/rsi/*` 也在此端口 |
+| 只读记忆浏览器 | `ssh -L 18765:127.0.0.1:18765 <user>@<host>` 后开 `http://127.0.0.1:18765` | 仅内网 | `/feedback`、`/rsi/*` 也在此端口 |
 | Qdrant 集合 | 容器内 `http://qdrant:6333/collections` | 仅内网，无端口映射 | `DMSA_VECTOR_URL=http://qdrant:6333` 决定向量后端 |
 
 一键跑完上面 7 个带认证接口加 2 个负向用例（无认证 401、非法请求体 422）：
 
 ```bash
 export DMSA_MEMORY_API_KEY=...   # 从服务器 .env 取, 不要提交
+export DMSA_SELF_TEST_ORIGIN=https://memory.example.com
 .venv/Scripts/python.exe examples/06_remote_self_test.py
 ```
 
 脚本输出 JSON 报告（每个接口的状态码与耗时、`search_hit_count`、`passed`），
-退出码 0 表示全部通过。`DMSA_SELF_TEST_ORIGIN` 与 `DMSA_SELF_TEST_PREFIX`
-可覆盖默认的 `https://jensenlyz.cn` 与 `/v1/memories`。
+退出码 0 表示全部通过。`DMSA_SELF_TEST_ORIGIN`（必填）与 `DMSA_SELF_TEST_PREFIX`
+（默认 `/v1/memories`）决定请求目标。
 
 ```bash
+export DMSA_ORIGIN=https://memory.example.com
+
 # 写入一段会话历史（同一 session 的多轮请求会合并成一条经验卡）
-curl -sS https://jensenlyz.cn/v1/memories/add \
+curl -sS "$DMSA_ORIGIN/v1/memories/add" \
   -H "Authorization: Bearer $DMSA_MEMORY_API_KEY" -H "Content-Type: application/json" \
   -d '{"request_id":"demo-1","user_id":"demo-scope","session_id":"demo",'
      '"messages":[{"role":"user","content":"ops_0_clamp.py 的 clamp_0 对负数返回错误，需要修复。"},
                   {"role":"assistant","content":"最终修复如下：\n```python path=ops_0_clamp.py\ndef clamp_0(value, lower, upper):\n    return max(lower, min(upper, value))\n```\n验证：pytest 全部通过。"}]}'
 
 # 检索记忆
-curl -sS https://jensenlyz.cn/v1/memories/search \
+curl -sS "$DMSA_ORIGIN/v1/memories/search" \
   -H "Authorization: Bearer $DMSA_MEMORY_API_KEY" -H "Content-Type: application/json" \
   -d '{"query":"ops_0_clamp.py clamp_0 负数 返回错误","user_id":"demo-scope","top_k":10}'
 ```
 
-MCP 记忆接口（stdio 桥接同一公网服务）：`python -m dmsa.mcp_server.coding_memory`，环境变量 `DMSA_CODING_MEMORY_URL=https://jensenlyz.cn/v1/memories`、`DMSA_MEMORY_API_KEY`、`DMSA_CODING_MEMORY_SCOPE`；远程模式下的 `_search` 会返回 `trace_id`，配合 `_feedback` 可把检索与结果关联起来。
+MCP 记忆接口（stdio 桥接同一公网服务）：`python -m dmsa.mcp_server.coding_memory`，环境变量 `DMSA_CODING_MEMORY_URL=<origin>/v1/memories`、`DMSA_MEMORY_API_KEY`、`DMSA_CODING_MEMORY_SCOPE`；远程模式下的 `_search` 会返回 `trace_id`，配合 `_feedback` 可把检索与结果关联起来。
 
 stdio 暴露 14 个工具：`status`、`record`、`search`、`feedback`、`task_result`、`governance`、`procedure`、`effectiveness`、`conflicts`、`hybrid_search`、`recall`、`consolidate`、`transfer`、`search_as_of`（前缀均为 `dmsa_coding_memory_`）。
 
@@ -599,7 +607,7 @@ finally:
     memory.close()
 ```
 
-该启动示例为 sparse；dense 需在宿主中配置并注入真实 embedder。create_app 不加载模型。注册表 rollback 选择以前 accepted 的策略，和 PMD 数据快照 rollback 不同。正式比赛前固定代码、策略、模型与语料构建方式。
+该启动示例为 sparse；dense 需在宿主中配置并注入真实 embedder。create_app 不加载模型。注册表 rollback 选择以前 accepted 的策略，和 PMD 数据快照 rollback 不同。正式评测前固定代码、策略、模型与语料构建方式。
 
 ## 7. 原有 MCP 能力如何使用
 
@@ -643,7 +651,7 @@ python examples/01_quickstart_mcp.py
 | MCP 能查而 HTTP 查不到 | 两套引擎没有桥，检查接入路线 |
 | RSI 示例后服务排序没变 | 示例使用临时库，CLI 不自动读取策略注册表 |
 
-本地接入完成标准：Add 成功、Search 来源正确、跨 scope 不返回记录、重启可检索、另一个 Agent 真正调用 Search 并运行实际测试。比赛提交还需要官方合同联调和正式评估，这两项尚未完成。
+本地接入完成标准：Add 成功、Search 来源正确、跨 scope 不返回记录、重启可检索、另一个 Agent 真正调用 Search 并运行实际测试。接入外部评测平台还需要平台合同联调和正式评估，这两项尚未完成。
 
 ## 9. 本地闭环工具：检索 → 反馈 → 任务结果
 

@@ -11,7 +11,7 @@ from typing import Any
 
 import httpx
 
-ORIGIN = os.environ.get("DMSA_SELF_TEST_ORIGIN", "https://jensenlyz.cn").rstrip("/")
+ORIGIN = os.environ.get("DMSA_SELF_TEST_ORIGIN", "").strip().rstrip("/")
 PREFIX = os.environ.get("DMSA_SELF_TEST_PREFIX", "/v1/memories")
 API_KEY = os.environ.get("DMSA_MEMORY_API_KEY", "").strip()
 
@@ -56,6 +56,12 @@ def _run(client: httpx.Client, steps: list[dict[str, Any]]) -> list[dict[str, An
 
 def main() -> int:
     """依次调用全部公网接口, 输出 JSON 报告与失败原因."""
+    if not ORIGIN:
+        sys.stderr.write(
+            "DMSA_SELF_TEST_ORIGIN 未设置, 请指定已部署服务的公网地址, "
+            "例如 https://memory.example.com.\n"
+        )
+        return 2
     if not API_KEY:
         sys.stderr.write("DMSA_MEMORY_API_KEY 未设置, 无法执行带认证的自检.\n")
         return 2

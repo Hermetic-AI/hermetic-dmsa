@@ -7,8 +7,12 @@
 
 归档保存全部 30 个原始 Python 库源文件、原 README、原 pyproject，以及构建元数据。
 原 README 和元数据均声明 Apache 2.0；原目录没有 LICENSE 文件，打包时加入了
-本仓库的完整 Apache-2.0 文本，除此之外没有修改 PMD 源码。
+完整 Apache-2.0 文本，除此之外没有修改 PMD 源码。
 归档本身提供完整可修改源码，不是一个不可审计的二进制 wheel。
+
+2026-11-20 修订：打包时加入的 LICENSE 曾是残缺的告示片段（缺少 Apache-2.0
+正文条款），已替换为完整 200 行条款正文并重新打包；30 个 PMD 源码文件逐字节
+未变，其余归档成员字节一致，`SHA256SUMS` 同步更新。
 
 安装：`python -m pip install ./vendor/pmd-0.1.0.tar.gz`，再安装 DMSA。
 禁止用未经核实的同名 PyPI 包替换。本仓库所有 CI 和 Docker 构建都从此归档安装。

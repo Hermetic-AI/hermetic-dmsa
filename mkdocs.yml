@@ -1,0 +1,91 @@
+site_name: hermetic-dmsa
+site_description: >-
+  A provenance-aware memory layer for coding agents — store what happened,
+  retrieve what applies, and improve the retrieval policy offline.
+site_url: https://hermetic-ai.github.io/hermetic-dmsa/
+site_author: Hermetic AI Contributors
+repo_url: https://github.com/Hermetic-AI/hermetic-dmsa
+repo_name: Hermetic-AI/hermetic-dmsa
+edit_uri: edit/main/docs/
+copyright: Copyright &copy; 2026 Hermetic AI Contributors
+
+docs_dir: docs
+site_dir: site
+exclude_docs: |
+  papers/
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.tracking
+    - content.code.copy
+    - content.action.edit
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - search
+
+hooks:
+  - mkdocs_hooks.py
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+
+validation:
+  links:
+    anchors: warn
+    absolute_links: warn
+    unrecognized_links: warn
+
+nav:
+  - Home: index.md
+  - Getting started:
+      - Quick start: quickstart.md
+      - Architecture: architecture.md
+      - User manual: USAGE.md
+  - Coding Memory:
+      - Technical guide: coding-memory-guide.md
+      - Design: design/coding-memory.md
+      - HTTP API reference: api-reference.md
+      - Integrations: integrations.md
+      - Integrated RSI: integrated-rsi.md
+  - Algorithms:
+      - Coding Memory retrieval: algorithms/coding-memory.md
+      - Extension capabilities: algorithms/coding-memory-extensions.md
+      - Active memory retrieval: algorithms/active-memory-retrieval.md
+      - Offline RSI: algorithms/offline-rsi.md
+  - Operations:
+      - Deployment: deployment.md
+      - Security and data: security-and-data.md
+      - Evaluation runbook: evaluation-runbook.md
+      - Method card: method-card.md
+      - Paper mapping: paper-mapping.md
+      - Release checklist: release-checklist.md

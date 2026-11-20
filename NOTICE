@@ -1,8 +1,8 @@
 hermetic-dmsa
-Copyright 2026 DMSA Authors
+Copyright 2026 Hermetic AI Contributors
 
 This product includes software developed at
-The DMSA Authors (https://github.com/anthropic-research/hermetic-dmsa).
+Hermetic AI (https://github.com/Hermetic-AI/hermetic-dmsa).
 
 This product depends on:
 - pmd (Apache 2.0) — Provenance-aware Memory DAG library

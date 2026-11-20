@@ -1,7 +1,7 @@
 # 独立部署与开源分发
 
-安全边界和数据保留见 [security and data](security-and-data.md)。比赛运行流程见
-[competition runbook](competition-runbook.md)；合成 fixture 不代表官方成绩。
+安全边界和数据保留见 [security and data](security-and-data.md)。评测运行流程见
+[evaluation runbook](evaluation-runbook.md)；合成 fixture 不代表官方成绩。
 
 从本仓库 checkout 即可构建，不需要研究工作区或 sibling checkout。
 需要 Docker Engine + Compose v2，或者 Python 3.10+ 与支持 FTS5 的 SQLite。
@@ -147,7 +147,7 @@ docker compose exec -T memory dmsa-memory-smoke
 并把检索文本与底库文本分别标注为 `query` / `document`。Competition 使用独立
 `competition-data` 卷，避免与 sparse 语料混用；运行时
 供应商错误不会降级为哈希向量。健康检查不验证 key 是否被供应商接受；完整 smoke
-会真实调用 embedding，可能产生费用。未声称比赛成绩。
+会真实调用 embedding，可能产生费用。未声称任何外部评测成绩。
 Competition overlay 也启动只处于 Compose 内部网络的 Qdrant，持久卷为
 `qdrant-data`，不发布 Qdrant host port。`DMSA_QDRANT_API_KEY` 可配置受保护的外部
 Qdrant。Qwen embedding 请求超时为 60 秒且不会自动重试付费调用；OpenAI-compatible
@@ -175,7 +175,7 @@ python -m pip install ./vendor/pmd-0.1.0.tar.gz
 python -m pip install -e '.[http,dev]' httpx
 ```
 
-固定 PMD 源码包、许可证、来源和升级方式见 [vendor/README.md](../vendor/README.md)。
+固定 PMD 源码包、许可证、来源和升级方式见 [vendor/README.md](https://github.com/Hermetic-AI/hermetic-dmsa/blob/main/vendor/README.md)。
 本项目保留独立的 PMD 依赖，没有在 dmsa 内维护另一份算法实现。完整源码发行包
 含 vendor、Docker 与部署配置；标准 DMSA wheel 仍需独立安装配套 PMD wheel。
 不要从公共索引随意安装同名 pmd。自动 tag release 构建源码包、DMSA wheel 和

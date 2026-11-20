@@ -24,7 +24,7 @@
 - [ ] 新增属性测试
 - [ ] 手动测试通过
 - [ ] 覆盖率 ≥ 80%
-- [ ] Benchmark 数字有可复现 run artifact，且正确区分自测/官方成绩
+- [ ] Benchmark 数字有可复现 run artifact，且正确区分本地自测与外部评测成绩
 - [ ] agent-reported test claims 与独立执行的测试结果分开标记
 
 ## CI

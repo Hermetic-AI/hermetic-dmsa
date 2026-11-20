@@ -20,9 +20,9 @@ jobs:
       - name: Install dev deps
         run: pip install -e ".[http,dev,vector]" httpx
       - name: ruff check
-        run: ruff check src tests benchmarks/coding
+        run: ruff check src tests benchmarks/coding mkdocs_hooks.py
       - name: ruff format check
-        run: ruff format --check src tests benchmarks/coding
+        run: ruff format --check src tests benchmarks/coding mkdocs_hooks.py
 
   type:
     name: Type Check (mypy --strict)

@@ -1,6 +1,6 @@
 # Integrations
 
-> 本页介绍原有 PMD DAG 的 MCP 工具。新版比赛用 Coding Memory HTTP 接口尚未接入这些 MCP 工具；接 Claude Code / Codex / OpenCode 使用新版记忆，请看 [新版接入与双 Agent 实验](coding-memory-guide.md#4-如何接入其他-agent)。两套存储不共享，需使用不同数据库文件。
+> 本页介绍原有 PMD DAG 的 MCP 工具。新版 Coding Memory HTTP 接口尚未接入这些 MCP 工具；接 Claude Code / Codex / OpenCode 使用新版记忆，请看 [新版接入与双 Agent 实验](coding-memory-guide.md#4-如何接入其他-agent)。两套存储不共享，需使用不同数据库文件。
 
 > 把 hermetic-dmsa 接入 Claude Code / OpenCode / Hermes Agent 的完整步骤。
 
@@ -8,9 +8,9 @@
 
 | 目标 | 接入机制 | 文档 | 工程量 |
 |---|---|---|---|
-| **Claude Code** | `.mcp.json` MCP server | [`integrations/claude-code/README.md`](../integrations/claude-code/README.md) | 5 分钟 |
-| **OpenCode** | `opencode.json` MCP server | [`integrations/opencode/README.md`](../integrations/opencode/README.md) | 5 分钟 |
-| **Hermes Agent** | `SKILL.md` + 调 MCP server | [`integrations/hermes/README.md`](../integrations/hermes/README.md) | 15 分钟 |
+| **Claude Code** | `.mcp.json` MCP server | [`integrations/claude-code/README.md`](https://github.com/Hermetic-AI/hermetic-dmsa/blob/main/integrations/claude-code/README.md) | 5 分钟 |
+| **OpenCode** | `opencode.json` MCP server | [`integrations/opencode/README.md`](https://github.com/Hermetic-AI/hermetic-dmsa/blob/main/integrations/opencode/README.md) | 5 分钟 |
+| **Hermes Agent** | `SKILL.md` + 调 MCP server | [`integrations/hermes/README.md`](https://github.com/Hermetic-AI/hermetic-dmsa/blob/main/integrations/hermes/README.md) | 15 分钟 |
 
 ## 共同前置条件
 

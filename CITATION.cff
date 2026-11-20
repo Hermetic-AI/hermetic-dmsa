@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+title: hermetic-dmsa
+message: >-
+  If you use this software in your research, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - name: Hermetic AI Contributors
+repository-code: https://github.com/Hermetic-AI/hermetic-dmsa
+url: https://hermetic-ai.github.io/hermetic-dmsa/
+license: Apache-2.0
+version: 0.2.0.dev0
+abstract: >-
+  A provenance-aware memory layer for coding agents. Stores raw engineering
+  history with full provenance, retrieves applicable evidence through exact,
+  sparse, and optional dense channels fused with RRF, and evolves its own
+  retrieval policy offline behind a paired-replay regression gate.
+keywords:
+  - llm-agent
+  - agent-memory
+  - retrieval
+  - provenance
+  - self-improvement
+  - model-context-protocol
+  - software-engineering

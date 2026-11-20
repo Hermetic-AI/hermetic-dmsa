@@ -1,42 +1,26 @@
-# Coding Memory 开源方法榜：DMSA + RSI 技术落地方案
+# Coding Memory 设计方案
 
-日期：2026-10-22。状态：技术设计，尚未实施、部署或取得官方成绩。
-本文取代此前文本赛道方案中的任务建模；共用的持久化与接口正确性诊断仍有效。
+本文说明 Coding Memory 的目标、记忆表示、写入与检索流程，以及离线自改进（RSI）
+的设计约束。已实现的算法细节见 [algorithms/coding-memory.md](../algorithms/coding-memory.md)、
+[algorithms/coding-memory-extensions.md](../algorithms/coding-memory-extensions.md) 与
+[algorithms/offline-rsi.md](../algorithms/offline-rsi.md)；HTTP 契约见
+[api-reference.md](../api-reference.md)。
 
-## 当前实现状态（0.2.0.dev0）
+## 1. 目标与边界
 
-已实现本地 provenance-aware Coding Memory、有界检索和鉴权 `/add`、`/search` 子集。sparse 开发模式只用稀疏索引；competition profile 要求配置真实 text-embedding-v4 endpoint。`/v1/runs`、在线进化、官方 endpoint 验证和 1.8B 规模验证均未实现。独立打包与 Docker 部署见 [deployment.md](deployment.md)，PMD 固定源码发行包随仓库提供。
+Coding Memory 面向软件工程 Agent：从大量同仓库历史中找到当前任务真正适用的定位
+线索、根因证据、修复模式、失败教训和验证方法，减少无关历史造成的误导。
 
-## 1. 目标、合约与关键判断
+本库交付记忆系统本身：写入历史、检索证据、按需离线改进检索策略。解题、改代码、
+运行测试与评分由调用方的 Coding Agent 负责。
 
-目标：让平台的固定 coding agent 能从大量同仓库历史中，找到当前任务真正适用的
-定位线索、根因证据、修复模式、失败教训和验证方法，减少无关历史造成的误导。
-我们交付记忆系统，平台负责实际解题、改代码、测试与评分。
+边界：
 
-已核实的一手来源：
-
-- https://agentmemoryleaderboard.ai/api/v1/evaluation-tracks/coding/contract
-- https://agentmemoryleaderboard.ai/docs
-- https://agentmemoryleaderboard.ai/api-guide
-- https://agentmemoryleaderboard.ai/competition/
-
-2026-10-22 实时合约为 `coding-v1` / `cambench-coding-relevant-noisy-300-v1`，
-数据集 `cambench_code`。正式说明是 150 个软件工程任务在 relevant/noisy 下各运行
-一次，共 300 次计分尝试。用户提供 99 个修复、51 个增强、四档噪声与约 1.8B tokens
-作为容量和评测切片背景；四档噪声不再乘进 300，具体分配以绑定合约为准。
-
-开源榜 embedding 使用 `text-embedding-v4`，LLM 组件使用 `gpt-4o-mini`，reranker
-不限。平台 coding_model 的公开枚举是 `flash`，属于平台执行配置，不能据此将我们
-的提炼模型换成其他模型。参赛方无需实现评测平台的 `/v1/runs` orchestration API。
-
-Add 并发范围 16–64，Search 16–256；单请求最长 30 分钟。并发是容量上限，
-不能拿它直接推算 QPS。正式 top_k 按请求处理，通用文档当前为 100。
-Coding memory-api-v1.1 的合约能力声明接受 string/content parts，但通用文档说明
-Coding 通常发字符串；适配器支持字符串及有序 text parts，拒绝非 text 类型。
-
-接口没有承诺发送 repo checkout、commit、测试标签、文件系统或平台最终成败反馈。
-因此这些字段必须可缺省；所有路径、符号和结论都从实际收到的轨迹提取，不能从
-user_id 猜数据集/仓库，不能要求平台额外传 filters、rerank 或 keyword_search。
+- 记忆正文一律是**数据**，不是指令。系统不执行传入的代码、shell 或测试，不访问
+  轨迹中的任意 URL。
+- 记忆不保证正确。历史可能过期、有误或携带提示注入，调用方必须用当前代码和测试
+  复核。
+- 策略改进只作用于检索与提炼程序，不修改调用方的模型权重，也不改写原始记录。
 
 ## 2. 最核心的七个技术想法
 
@@ -51,7 +35,7 @@ user_id 猜数据集/仓库，不能要求平台额外传 filters、rerank 或 k
 | 双层离线 RSI | 固定总结模板难持续改善 | 内层改卡片/检索策略，外层改提案器；固定裁判、独立验收 | 单层 vs 双层，固定成本配对比较 |
 
 方法定位：**带适用条件和来源证据的工程经验记忆，通过可回放的双层离线优化，
-改进它自身的提炼和检索程序。** 这些是待检验的组合假设，不能直接宣称首创或提分。
+改进它自身的提炼和检索程序。** 这些是可检验的组合假设，不构成效果承诺。
 
 ## 3. 总体架构与两条数据路径
 
@@ -68,7 +52,7 @@ flowchart TD
     F --> G
     G --> H[适用性判别 / 抗噪 / 有限扩展]
     H --> I[预算内证据包]
-    I --> J[平台 coding agent 执行与评分]
+    I --> J[调用方 coding agent 执行]
     K[独立开发任务与沙箱反馈] --> L[DMSA 错误归因与 SGA]
     L --> M[RSI 候选 / 配对回放 / 固定门禁]
     M --> N[冻结的提炼和检索策略包]
@@ -77,7 +61,7 @@ flowchart TD
 ```
 
 在线数据平面只做 Add/Search 和冻结算法内的数据更新。离线改进平面只使用自有或
-获许可开发任务；正式评测轨迹、评分及衍生副本不进入全局进化池。
+获许可的开发任务；受保护的评测轨迹、评分及衍生副本不进入全局进化池。
 
 ## 4. 记忆表示：保留经验的因果链与适用边界
 
@@ -133,7 +117,7 @@ PMD provenance DAG 保存 `derived_from` 和版本父子关系，负责追溯、
 
 ## 5. Add：可恢复、可索引、成本受控
 
-建议流水线：鉴权/契约校验 → 幂等租约 → 规范化 → 来源切片 → 词项/符号提取
+流水线：鉴权/契约校验 → 幂等租约 → 规范化 → 来源切片 → 词项/符号提取
 → 有限卡片提炼 → batch embedding → 原子发布可搜索 revision → HTTP 200。
 
 1. 请求唯一键 `(scope, request_id)`，payload hash 覆盖原始有序内容。相同键相同
@@ -142,12 +126,12 @@ PMD provenance DAG 保存 `derived_from` 和版本父子关系，负责追溯、
    只有源数据及所需索引完整后 revision 才变为 searchable，随后返回成功。
 3. raw 文本独立持久化，SQLite 保存目录/来源/事务状态；FTS5 存词项，磁盘 ANN
    保存向量。多存储用 manifest 与 outbox 恢复，不伪称跨库 ACID。
-4. 第一版固定使用“一条完整请求形成一个原子可见增量”；并发 Add 的提交序列由
+4. 固定使用“一条完整请求形成一个原子可见增量”；并发 Add 的提交序列由
    scope revision 明确。Search 获取一个快照，不混合半个旧索引和半个新索引。
 5. 索引/嵌入失败时不返回成功。提炼阶段可以按预先披露的固定降级策略发布原文
    基线，但不能无声更换 embedding 模型或让成功写入不可检索。
 6. 提炼跨 Add 的 episode 时需维护 scope/session 下的开放尾部状态，并让新卡片
-   挂接旧来源；重试不重复生成。第一版可仅单请求提炼，避免隐式串写。
+   挂接旧来源；重试不重复生成。
 7. 不执行传入代码、shell 或测试，不访问轨迹中的任意 URL。代码、日志和指令
    全是数据。抽取模型只输出校验后的结构，不调用工具。
 
@@ -166,7 +150,7 @@ PMD provenance DAG 保存 `derived_from` 和版本父子关系，负责追溯、
 
 从 query 确定性识别路径、符号、异常名、失败测试、语言及显式版本；未给出的
 字段保持未知。保留完整原 query，不用猜出的修复方案替换它。
-可选 gpt-4o-mini 仅做检索意图/同义术语提案，受预算限制，不生成最终答案。
+可选的 LLM 只做检索意图/同义术语提案，受预算限制，不生成最终答案。
 请求未带工作区代码时，不承诺 AST 定位或真实依赖关系判断。
 
 ### 6.2 四路召回
@@ -195,11 +179,11 @@ PMD provenance DAG 保存 `derived_from` 和版本父子关系，负责追溯、
 - 同一经验重复十次不变成十票支持：按 episode/source family 去重。
 - 失败动作默认不给“可用修复”强信号；在失败条件匹配时可作为反例检索。
 - 高频与历史时间新不代表正确；代码版本未知时不把最后写入当当前版本。
-- 语义距离大可能是无关，不等于矛盾；替换当前 ConflictDetector 的错误假设。
+- 语义距离大可能是无关，不等于矛盾。
 
 第一版用可解释条件与 RRF/MMR；第二版再增加有延迟/许可记录的 reranker。
 若采用 LLM pairwise 判断，只检查候选与来源的适用性，不能把生成的新补丁当记忆。
-低置信时返回少量原文，允许空结果，不为了凑满 100 塞无关历史。
+低置信时返回少量原文，允许空结果，不为了凑满 top_k 塞无关历史。
 
 ### 6.4 证据打包
 
@@ -222,10 +206,10 @@ PMD provenance DAG 保存 `derived_from` 和版本父子关系，负责追溯、
 验证范围及限制：……
 ```
 
-平台可能忽略额外 metadata，所以必要来源/条件需在 content 中简洁呈现；返回
+调用方可能忽略额外 metadata，所以必要来源/条件需在 content 中简洁呈现；返回
 稳定 id、可选 score，不把来源时间未知伪造为事件时间。保留 diff 前后文和行引用，
 但不返回整段无关测试日志。内容只说明历史事实，避免“你必须执行”等代理指令。
-内部 token 预算以 Coding 实际 adapter/Smoke 为准，不能沿用文本 Answer 的预算常数。
+内部 token 预算以实际适配器与 smoke 契约为准。
 
 ## 7. DMSA + RSI：具体改进什么，怎样产生可信反馈
 
@@ -239,17 +223,18 @@ PMD provenance DAG 保存 `derived_from` 和版本父子关系，负责追溯、
 | 文本梯度更新 | 提案入口 | 生成结构化候选，禁止直接追加到事实记忆并发布 |
 | 条件分支 | 条件化经验 | 同条件互斥才记冲突；不同条件生成分支 |
 | ToolBP | 受限结构编辑 | 可复用 schema 校验思想；不把现有 JSON Schema 树称为源码 AST |
-| MCP | 现有集成入口 | 保留兼容；比赛另加 HTTP L4 适配器 |
+| MCP | 现有集成入口 | 保留兼容；HTTP L4 适配器另提供 Coding Memory 通道 |
 
-### 7.2 反馈来源：正式环境与开发环境分开
+### 7.2 反馈来源：生产环境与开发环境分开
 
-正式 Search 没有 gold、没有测试执行权，也没有保证收到最终分数反馈，不能构造
+线上 Search 没有 gold、没有测试执行权，也没有保证收到最终分数反馈，不能构造
 “我觉得成功”的训练标签。接口运行只记录最小运维指标，不挖掘跨样本经验。
 
 离线开发使用自有/许可任务、历史轨迹和可执行仓库：固定 commit 的沙箱中让相同
 coding agent 使用 baseline/candidate 记忆运行，记录补丁、测试、超时与成本。
-agent/裁判与固定平台未必相同，因此端到端结果必须标“本地代理指标”，官方成绩
-仍是最终依据。检索代理指标由人工标注或已知来源 trace 给出，不能用 LLM 自评替代。
+agent/裁判与外部评测平台未必相同，因此端到端结果必须标“本地代理指标”，外部
+评测成绩才是最终依据。检索代理指标由人工标注或已知来源 trace 给出，不能用 LLM
+自评替代。
 
 诊断类别：missed_evidence、wrong_episode、identifier_confusion、inapplicable_fix、
 lost_failure_context、missing_validation、version_mismatch、truncated_evidence、
@@ -294,7 +279,7 @@ redundant_noise。只有能复现且具有支持证据的诊断进入 SGA。
 - 在预定义切片约束下至少一项可重复改善，无不可接受回归；第一版采用少量高价值
   保护任务“零已观察退化”，明确这不是总体统计保证。
 - relevant/noisy、bug_fix/feature、语言/仓库、长历史、条件未知分别报告；噪声等级
-  用公开/自建构造标注，不能解析正式 scope 猜等级。
+  用公开/自建构造标注，不能解析受保护 scope 猜等级。
 - 噪声 LLM 判断需重复测量；端到端报告配对差异和不确定性，不以一次涨分发布。
 - 一次只晋升一个候选；生成冻结 manifest，原子切换 active，随时回滚父版本。
 
@@ -305,24 +290,24 @@ redundant_noise。只有能复现且具有支持证据的诊断进入 SGA。
 [MetaSkill-Evolve](https://arxiv.org/abs/2607.05297) 提供快慢元技能方向；
 [GEPA](https://arxiv.org/abs/2507.19457) 提供轨迹反馈优化思路。
 除 Designer-RSI 已核对全文外，后三项目前核实到摘要层，不把未核实细节当实现规范。
-这些论文不构成 CAMBench 提分证据；本方案双层受限策略是工程设计，需要独立验证。
+这些论文不构成效果证据；本文的双层受限策略是工程设计，需要独立验证。
 
-正式 Full 前冻结全部程序/提示/策略/模型与初始包；评测中只运行披露的固定记忆
-更新算法，不把正式数据用于离线 RSI 或跨任务共享。官方未明确禁止所有在线自适应，
+正式评测前冻结全部程序/提示/策略/模型与初始包；评测中只运行披露的固定记忆
+更新算法，不把正式数据用于离线 RSI 或跨任务共享。外部评测未明确禁止所有在线自适应，
 这里选择冻结策略是为了与版本和数据用途约束兼容。
 
-## 8. 1.8B tokens 下的容量与成本
+## 8. 容量与成本
 
-这是评测总体口径，不能推成每个 scope 大小、唯一文本量或一次请求大小。容量需
-按全量读写和峰值 scope 两个方向测试，并验证同源历史是否重复发送。
+容量口径必须先固定再推算，不能从一个总量口径推出每个 scope 的大小、唯一文本量
+或单次请求大小。容量需按全量读写和峰值 scope 两个方向测试，并验证同源历史是否
+重复发送。
 
 保守示例：若全部按 1000 tokens/块且不去重，约 180 万块；加 10% overlap 约
 200 万块。若维度 d=1024、float32，裸向量约 8.2GB；d=1536 约 12.3GB，均不含
-ANN、原文、FTS、卡片及备份。维度只作测算，最终按合规模型实际配置确认。
+ANN、原文、FTS、卡片及备份。维度只作测算，最终按实际模型配置确认。
 每块另加卡片向量可能近翻倍，不应默认给全部中间视图都建向量。
 
 嵌入成本 = 实际计费输入 tokens / 1e6 × 单价；提炼成本还包含输出 tokens。
-1.8B 全量 embedding 等于 1800 个百万 token 计费单位，重叠、重建和查询另计。
 不能在未确认服务商单价、速率和去重率前填总金额。
 
 建议生产起点（容量假设，非压测结论）：Linux，16–32 vCPU、64–128GB RAM、
@@ -343,65 +328,42 @@ NVMe 至少 200GB；有 reranker 时再评估 GPU。先测 1%/10% 数据的索�
 声明最小并发下无范围泄漏/损坏；Add 按 payload tokens 分档报告 p95 与 tokens/s，
 不能给所有大小同一个 SLA。Search 缓存包含 scope/revision/query/policy/top_k。
 
-## 9. 与现有项目结构的落地映射
+## 9. 代码结构映射
 
-保持 L1→PMD、L2→L1、L3→L2/L1、L4→下层，跨层通过 __init__ 公共 API。
-以下为建议新增文件，尚未创建实现：
+保持 L1→PMD、L2→L1、L3→L2/L1、L4→下层，跨层通过 `__init__` 公共 API。
+Coding Memory 的实现按职责拆在下列模块：
 
 ```text
-src/dmsa/memory/
-  sources.py          # 原始来源、范围与 span 公共类型
-  episodes.py         # 轨迹边界、episode 数据对象
-  experiences.py      # 卡片、条件与结果证据模型
-  ingestion.py        # staging、幂等、revision 与恢复
-  retrieval.py        # scoped 多路召回和 RRF
-  evidence.py         # 来源回填、组合、预算和去重
-  backends/           # sqlite/fts/vector 协议与具体后端
+src/dmsa/memory/coding/
+  schema.py / models.py     # 公共类型与契约
+  storage*.py               # SQLite 持久化、索引与事务
+  extraction.py / episodes.py / experiences.py
+  admission.py / trust.py / governance.py
+  retrieval.py / search_flow.py / hybrid*.py / ranking.py
+  evidence_pack.py / packing.py / explanation.py
+  snapshot*.py / reindex.py / vector_*.py
 src/dmsa/gradient/
-  diagnosis.py        # 开发轨迹错误归因
-  policy.py           # 受限可进化配置
-  proposals.py        # SGA 到结构化候选
-  replay.py           # 快回放与沙箱执行接口
-  gate.py             # 固定发布规则与报告
-  meta_evolution.py   # 有界外层提案器比较
+  diagnosis.py / policy.py / samples.py / replay*.py / gate.py / meta_evolution.py
 src/dmsa/mcp_server/http/
-  contracts.py        # Add/Search 与 text parts 校验
-  service.py          # L4 注入提炼/嵌入，编排 L1/L2
-  app.py              # FastAPI 可选入口、鉴权和健康检查
-benchmarks/coding/    # 独立开发数据描述、噪声生成、指标和消融
+  contracts.py / app.py / runtime.py / embedding.py
+benchmarks/coding/           # 开发数据描述、噪声生成、指标和消融
 ```
 
 L1 不 import L2 的具体 LLM client；通过 Protocol 注入或由 L4 编排抽取，把校验后的
-卡片交给 L1。Tree-sitter 等可选代码解析依赖放在相应 memory extra；无法解析时
-回退到结构/行边界，不丢原文。开发沙箱 runner 与在线服务进程分离。
+卡片交给 L1。可选代码解析依赖放在相应 extra；无法解析时回退到结构/行边界，不丢原文。
+开发沙箱 runner 与在线服务进程分离。
 
-先拆超 300 行的 memory/layer.py、config.py 相关职责；不破坏现有公开路径。
-重大重构按 AGENTS.md 先提交 issue；公共 API 改动写 api-reference 并有正常/异常/
-边界测试；算法文档写 paper-mapping 与 algorithms。默认库仍可离线运行，生产
-profile 明确拒绝 hash embedding，依赖通过 extras 安装。
+公共 API 改动写 api-reference 并有正常/异常/边界测试；算法改动写 paper-mapping
+与 algorithms。默认库仍可离线运行，生产 profile 明确拒绝 hash embedding，依赖通过
+extras 安装。
 
-## 10. 实施阶段与验收
-
-| 阶段 | 独立交付 | 必须通过的验收 |
-|---|---|---|
-| P0 基线与正确性 | 先上传当前源码快照；修持久化、删除/TTL、零学习率 | 重启恢复、删除不召回、梯度边界；保留当前修改 |
-| P1 可参赛服务 | scoped 原始记忆、幂等、HTTP、FTS/合规 dense | 官方契约 fake replay、并发/中断恢复、无跨 scope |
-| P2 Coding 核心 | episode、工程卡片、条件抗噪、证据组合 | 对比纯 hybrid 的 evidence/noise/本地解决率 |
-| P3 DMSA 优化 | 多样本诊断、SGA、内层候选和回放 gate | 拒绝退化/造假/缺测；来源不变；冻结包可回滚 |
-| P4 RSI 加深 | 一轮元提案器演化 | 固定总预算优于或不劣于单层；未见集验证 |
-| P5 参赛冻结 | 容量、模型、许可证、方法报告、部署与 Smoke | 固定 commit/config/index schema，Full 前完整复核 |
-
-本期时间优先 P0–P2：没有可靠抗噪检索，递归层越多越容易放大错误。P3 可先做
-检索代理回放；P4 若无充分预算与收益证据，不启用正式版本，但完整保留研究接口。
-材料截止当前为 10-31 23:59 UTC+8，不能把本轮所有研究功能绑定为提交前置条件。
-
-## 11. 评测设计与消融
+## 10. 评测设计与消融
 
 开发拆分按 repository/task family 分组，避免近重复补丁和历史泄漏。
 `evolution_train`、`replay_validation`、`outer_validation`、`heldout_test` 分离。
 四档噪声自建时包含：无关任务、词面相似根因不同、失败尝试、相反 API 条件、旧
 版本经验和重复日志；记录抽样种子和干扰来源，既测相同 token 预算也测自然增长。
-这些是开发难例，不冒充官方噪声构造方法。
+这些是开发难例，不冒充外部评测的噪声构造方法。
 
 必须比较：
 
@@ -415,27 +377,10 @@ profile 明确拒绝 hash embedding，依赖通过 extras 安装。
 主要本地指标：测试解决率及 relevant/noisy 差、已知目标文件定位率、误导记忆率、
 证据 Recall/nDCG、facet 覆盖、失败路径重复率、p95、外部调用成本和索引容量。
 开发任务允许时跑“不提供记忆”作为负迁移参照。
-官方 score 聚合不自行假定；分别报告 bug_fix/feature/noise 切片，不能用一个平均值
-隐藏高噪声崩溃。不能以文件定位提升替代最终解决率。
+外部评测的 score 聚合不自行假定；分别报告 bug_fix/feature/noise 切片，不能用一个
+平均值隐藏高噪声崩溃。不能以文件定位提升替代最终解决率。
 
 工程性质测试包括：跨 scope 拒绝、重复写入、断电式中断恢复、并发 Add/Search
 快照、删除级联、长期日志切片无丢失、卡片来源校验、恶意指令仅作数据、版本未知
 不误判、来源字段不编造、gate 对 NaN/缺测/超预算拒绝。全量 pytest 覆盖率≥80%；
 新模块严格 ruff/mypy，既有基线违规明确列清并分批修复，不降低门槛掩盖问题。
-
-## 12. 当前实现状态（0.2.0.dev0）
-
-原版已上传并冻结为 `baseline/pre-coding-rsi-20261022`，新版在
-`feat/coding-memory-rsi` 分支开发。
-
-已实现：
-
-- Add：原文和来源切片持久化、隔离、原子写入及幂等重试。
-- Search：路径/符号精确检索、FTS 稀疏检索、可选语义向量融合，按预算返回来源证据。
-- RSI 内层：根据重复失败提出小幅策略调整，开发集配对回放，通过固定门禁后登记版本；服务策略需显式更新。
-- HTTP：鉴权的 `/add`、`/search`，以及 `/health`；开发模式仅用稀疏检索，比赛模式接入配置的 `text-embedding-v4`。
-- 修复原 MemoryLayer 的持久化接线、无效记忆召回及零学习率更新问题。
-
-外层元进化、经验卡片/条件抽象、ANN 大规模向量索引及完整竞赛部署仍属于后续工作。
-本次验证限于本地测试；未调用付费 API、运行官方评测或验证 1.8B Tokens 规模，
-不能据此声称比赛得分提高。当前安装仍依赖相邻的 PMD skeleton。
