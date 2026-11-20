@@ -74,6 +74,24 @@ offline RSI loop that proposes and gates retrieval-policy changes.
 - The evidence delivery ceiling is no longer suppressed by the scoring pass, so
   channel ranking decides the order.
 
+### Fixed
+
+- Python 3.10 no longer fails at import time: `logging.StreamHandler` only became
+  subscriptable in 3.11, so the handler base class now resolves through a
+  type-checking alias instead of a runtime subscript.
+- The stdio MCP server pins its protocol streams to UTF-8. Tool descriptions are
+  Chinese, and on a non-UTF-8 locale (for example `cp1252` on Windows) the server
+  previously died while writing a `tools/list` response.
+- The coding-memory agent adapter sends and receives UTF-8 explicitly, so a
+  payload containing non-ASCII text is no longer corrupted or rejected by the
+  platform default encoding.
+- The Docker container contract test supplies its own throwaway API key.
+  `compose.yaml` declares `DMSA_MEMORY_API_KEY` as required, and the test used to
+  strip every `DMSA_*` variable, so `docker compose` aborted during interpolation.
+- `opentelemetry-api` is pinned to 1.45.2, clearing CVE-2026-126360.
+- The bundled PMD archive and the pinned dependency lock agree on the archive's
+  SHA-256 again.
+
 ### Known Limitations
 
 - The dense channel is a bounded in-scope scan (10,000 slices by default), not a

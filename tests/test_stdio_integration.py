@@ -42,20 +42,40 @@ def _rpc_line(method: str, request_id: int, params: dict | None = None) -> str:
 
 
 @pytest.fixture
-def server_proc():
-    """拉起 MCP server 子进程（内存模式），测试结束后确保回收。"""
+def server_proc(tmp_path):
+    """拉起 MCP server 子进程（内存模式），测试结束后确保回收。
+
+    stderr 落临时文件而不是丢弃：子进程异常退出时能把原因带进断言信息。
+    """
+    stderr_path = tmp_path / "server-stderr.log"
+    stderr_file = stderr_path.open("wb")
     proc = subprocess.Popen(
         [sys.executable, "-m", "dmsa.mcp_server.cli", "--storage", ":memory:"],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
-        text=True,
+        stderr=stderr_file,
+        # 协议帧固定 UTF-8；父进程按同一编码解码，避免落到系统默认编码上。
+        encoding="utf-8",
+        errors="replace",
         env=_server_env(),
     )
+    proc.stderr_path = stderr_path  # type: ignore[attr-defined]
     yield proc
     if proc.poll() is None:
         proc.kill()
         proc.wait(timeout=_TIMEOUT)
+    stderr_file.close()
+
+
+def _server_stderr(proc: subprocess.Popen) -> str:
+    """读取子进程 stderr，用于失败诊断。"""
+    path = getattr(proc, "stderr_path", None)
+    if path is None:
+        return ""
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
 
 
 def _send(proc: subprocess.Popen, line: str) -> dict:
@@ -65,7 +85,9 @@ def _send(proc: subprocess.Popen, line: str) -> dict:
     proc.stdin.write(line + "\n")
     proc.stdin.flush()
     reply = proc.stdout.readline()
-    assert reply, "server closed stdout without responding"
+    assert reply, (
+        f"server closed stdout without responding\n--- server stderr ---\n{_server_stderr(proc)}"
+    )
     return json.loads(reply)
 
 

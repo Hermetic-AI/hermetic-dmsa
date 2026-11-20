@@ -118,7 +118,8 @@ def test_agent_adapter_is_judged_by_local_pytest(tmp_path) -> None:
     agent.write_text(
         "import json, re, subprocess, sys\n"
         "from pathlib import Path\n"
-        "payload = json.loads(sys.stdin.read())\n"
+        "# 协议固定 UTF-8: 载荷含中文, 走系统默认编码会在 cp1252 区域设置下损坏数据。\n"
+        "payload = json.loads(sys.stdin.buffer.read().decode('utf-8'))\n"
         "repo = Path(payload['repo_path'])\n"
         "pattern = r'```[A-Za-z0-9_+.-]*[ \\t]+path=([^\\s`]+)\\n(.*?)```'\n"
         "blocks = []\n"
@@ -136,7 +137,7 @@ def test_agent_adapter_is_judged_by_local_pytest(tmp_path) -> None:
         "        resolved = True\n"
         "        break\n"
         "claim = {'resolved': resolved, 'localized_path': payload['target_path']}\n"
-        "sys.stdout.write(json.dumps(claim))\n",
+        "sys.stdout.buffer.write(json.dumps(claim).encode('utf-8'))\n",
         encoding="utf-8",
     )
     report = run_selftest(

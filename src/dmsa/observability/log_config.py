@@ -20,13 +20,22 @@ import os
 import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import IO, Any, Literal
+from typing import IO, TYPE_CHECKING, Any, Literal
 
 from dmsa.errors import InvalidConfigValueError
 from dmsa.observability.log_formatters import TRACE_LOG_LEVEL, JsonFormatter, TextFormatter
 
 LogLevel = int
 LogFormat = Literal["text", "json"]
+
+if TYPE_CHECKING:
+    # logging.StreamHandler 直到 3.11 才在运行时支持下标, 3.10 上写
+    # ``logging.StreamHandler[Any]`` 会在导入期抛 TypeError。基类表达式是运行时求值的,
+    # ``from __future__ import annotations`` 帮不上忙, 因此类型检查走参数化版本,
+    # 运行期走未参数化的原始类。
+    _StreamHandlerBase = logging.StreamHandler[IO[str]]
+else:
+    _StreamHandlerBase = logging.StreamHandler
 
 # 三方库在 INFO 级别过于吵闹，默认压到 WARNING；调用方显式要 DEBUG 时才放开。
 _NOISY_LOGGERS: tuple[str, ...] = (
@@ -59,7 +68,7 @@ DEFAULT_FILE_MAX_BYTES = 5 * 1024 * 1024
 DEFAULT_FILE_BACKUP_COUNT = 3
 
 
-class ManagedStreamHandler(logging.StreamHandler[Any]):
+class ManagedStreamHandler(_StreamHandlerBase):
     """由本模块安装的流 handler，用于重复装配时只摘掉自己的 handler。"""
 
 

@@ -17,21 +17,31 @@ def stack() -> Iterator[tuple[list[str], dict[str, str]]]:
     with socket.socket() as listener:
         listener.bind(("127.0.0.1", 0))
         port = listener.getsockname()[1]
+    # 隔离开发者本机配置, 但 compose.yaml 把 DMSA_MEMORY_API_KEY 声明为必填变量,
+    # 缺失时 compose 会在插值阶段直接报错, 所以这里补一个一次性测试用 key。
     env = {name: value for name, value in os.environ.items() if not name.startswith("DMSA_")}
     env["DMSA_HTTP_PORT"] = str(port)
+    env["DMSA_MEMORY_API_KEY"] = "test-service-key"
     command = ["docker", "compose", "-p", "dmsa-contract-" + uuid4().hex[:10]]
     try:
-        subprocess.run(
+        completed = subprocess.run(
             [*command, "up", "-d", "--build", "--wait", "--wait-timeout", "120"],
             env=env,
-            check=True,
+            check=False,
             capture_output=True,
             text=True,
         )
+        if completed.returncode != 0:
+            raise AssertionError(
+                "docker compose up failed"
+                f"\n--- stdout ---\n{completed.stdout}"
+                f"\n--- stderr ---\n{completed.stderr}"
+            )
         yield command, env
     finally:
+        # 清理失败不能盖住真正的失败原因, 这里不抛异常。
         subprocess.run(
-            [*command, "down", "--volumes"], env=env, check=True, capture_output=True, text=True
+            [*command, "down", "--volumes"], env=env, check=False, capture_output=True, text=True
         )
 
 

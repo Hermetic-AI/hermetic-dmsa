@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import sys
 
 from dmsa.config import load_config
 from dmsa.errors import DMSAError
@@ -56,6 +57,12 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     # stdio MCP 的 stdout 归协议，日志一律走 stderr（setup_logging 的默认目标）
     setup_logging("DEBUG" if args.verbose else None)
+    # 协议帧固定走 UTF-8: 工具描述含中文, 交给系统默认编码会在非 UTF-8
+    # 区域设置(如 Windows 的 cp1252)下直接编码失败, 子进程随之中断。
+    if hasattr(sys.stdin, "reconfigure"):
+        sys.stdin.reconfigure(encoding="utf-8")
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
     # 配置
     try:
         config = load_config()

@@ -29,6 +29,19 @@ passes one JSON object on stdin, and expects one JSON result on stdout:
  "token_count": 1234, "cost_usd": 0.01}
 ```
 
+The payload on stdin is UTF-8 and may contain non-ASCII text, because the task
+query and the retrieved evidence are not restricted to ASCII. A wrapper must
+therefore read the raw bytes and decode them as UTF-8 explicitly — reading
+`sys.stdin` with the platform default encoding corrupts the payload on
+non-UTF-8 locales (for example `cp1252` on Windows):
+
+```python
+payload = json.loads(sys.stdin.buffer.read().decode("utf-8"))
+```
+
+Write the result back the same way (`sys.stdout.buffer.write(...)`) so the reply
+is not re-encoded by the console codepage.
+
 Example wrapper invocation (the wrapper must implement the above contract):
 
 ```powershell

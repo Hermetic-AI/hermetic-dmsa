@@ -47,8 +47,11 @@ def run_agent(argv: list[str], payload: dict[str, Any], timeout: float = 600.0) 
     try:
         completed = subprocess.run(
             argv,
+            # stdin 固定走 UTF-8: 载荷含中文, 交给系统默认编码会在非 UTF-8
+            # 区域设置(如 Windows CI 的 cp1252)下直接编码失败。
             input=json.dumps(payload, ensure_ascii=False),
-            text=True,
+            encoding="utf-8",
+            errors="replace",
             capture_output=True,
             timeout=timeout,
             check=False,
