@@ -13,6 +13,8 @@
 from __future__ import annotations
 
 from dmsa.memory.coding import (
+    DEGRADED_EMBEDDING,
+    DEGRADED_VECTOR_INDEX,
     AsOf,
     CodingMemory,
     CodingMemoryConflictError,
@@ -33,6 +35,7 @@ from dmsa.memory.coding import (
     RecallExplanation,
     RecallItem,
     RecallRound,
+    ReindexReport,
     RuleGroup,
     SearchHit,
     SearchPolicy,
@@ -57,6 +60,8 @@ from dmsa.memory.prompt_context import (
 from dmsa.memory.serialization import from_dict, to_dict
 
 __all__ = [
+    "DEGRADED_EMBEDDING",
+    "DEGRADED_VECTOR_INDEX",
     "AsOf",
     "CodingMemory",
     "CodingMemoryConflictError",
@@ -81,6 +86,7 @@ __all__ = [
     "RecallExplanation",
     "RecallItem",
     "RecallRound",
+    "ReindexReport",
     "RuleGroup",
     "SearchHit",
     "SearchPolicy",

@@ -35,6 +35,7 @@ from dmsa.memory.coding.procedure_service import ProcedureService
 from dmsa.memory.coding.procedure_store import ProcedureMatch
 from dmsa.memory.coding.procedures import Procedure
 from dmsa.memory.coding.recall_service import RecallService
+from dmsa.memory.coding.reindex import ReindexReport, reindex
 from dmsa.memory.coding.retrieval import CodingRetriever
 from dmsa.memory.coding.search_flow import operation, run_search
 from dmsa.memory.coding.snapshot import RepoSnapshot, build_snapshot
@@ -132,6 +133,33 @@ class CodingMemory(ConsolidationApi, HybridApi, TemporalApi):
             policy=policy,
             repo=repo,
             author=author,
+        )
+
+    def reindex_vectors(
+        self,
+        user_id: str,
+        repo: str = "",
+        *,
+        max_chunks: int = 0,
+        embed_batch: int = 64,
+        publish_batch: int = 256,
+    ) -> ReindexReport:
+        """补齐 scope 内缺失的向量, 并把已有向量重发布到远端索引.
+
+        写入路径在嵌入或向量索引故障时会降级为无向量落库, 本方法用于事后修复.
+        重发布只读 SQLite 里已存的向量, 不会重新调用嵌入模型, 因此清空远端索引
+        后可以低成本重建. 两个阶段都幂等, 中断后重跑安全.
+        """
+        require_identifier(user_id, "user_id")
+        require_optional_identifier(repo, "repo")
+        scope = scope_key(user_id, repo)
+        return reindex(
+            self.store,
+            self.retriever,
+            scope,
+            max_chunks=max_chunks,
+            embed_batch=embed_batch,
+            publish_batch=publish_batch,
         )
 
     def search(

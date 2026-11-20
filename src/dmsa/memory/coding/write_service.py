@@ -1,8 +1,8 @@
 """写入路径: 幂等预检、门控判定与事务发布.
 
 写入逻辑从 CodingMemory 门面拆出, 门面只保留公开 API 与委托, 使单个文件
-长度保持在项目规范内. 拆分不改变语义: 幂等预检、门控判定、向量化与发布的
-先后顺序完全不变.
+长度保持在项目规范内. 幂等预检、门控判定、向量化与发布的先后顺序不变;
+稠密通道故障时降级为无向量写入, 由 reindex 补算, 不再让整条写入丢失.
 """
 
 from __future__ import annotations
@@ -12,6 +12,9 @@ from collections.abc import Iterable, Iterator, Sequence
 from contextlib import contextmanager
 
 from dmsa.memory.coding.admission import (
+    DEGRADED_EMBEDDING,
+    DEGRADED_NONE,
+    DEGRADED_VECTOR_INDEX,
     REASON_CONFLICT,
     REASON_IDEMPOTENT,
     AdmissionDecision,
@@ -69,6 +72,10 @@ class WriteService:
         门控判定为重复或空内容时不落盘, scope revision 保持不变, 调用方
         可从返回的 decision 里读到原因. 跨作者的近似重复不判为重复, 而是
         判为冲突候选: 写入保留, 同时登记一条待仲裁的写冲突.
+
+        稠密通道 (嵌入服务、向量索引) 故障时降级为无向量写入: 原文、切片、
+        倒排词项与 FTS 照常落库, 稀疏通道立即可用, 向量由 reindex_vectors
+        事后补算. 降级原因写在返回值的 degraded 字段里.
         """
         require_identifier(request_id, "request_id")
         require_identifier(user_id, "user_id")
@@ -102,8 +109,9 @@ class WriteService:
         rival: tuple[str, float] | None = None
         if verdict.reason == REASON_CONFLICT and verdict.duplicate_of:
             rival = (verdict.duplicate_of, 1.0 - verdict.novelty)
-        vectors = self.retriever.embed_new([chunk.text for chunk in chunks])
-        self._publish_vectors(scope, request_id, chunks, vectors)
+        vectors, degraded = self._embed_vectors(chunks)
+        if vectors and not self._publish_vectors(scope, request_id, chunks, vectors):
+            degraded = DEGRADED_VECTOR_INDEX
         with self._operation():
             revision = self.store.add(
                 request_id,
@@ -112,11 +120,21 @@ class WriteService:
                 parsed,
                 chunks,
                 vectors,
-                self.retriever.fingerprint,
+                self.retriever.fingerprint if vectors else None,
                 author=author,
                 rival=rival,
             )
-        return AdmissionResult(revision, verdict)
+        return AdmissionResult(revision, verdict, degraded)
+
+    def _embed_vectors(self, chunks: Sequence[Chunk]) -> tuple[list[tuple[float, ...]], str]:
+        """计算切片向量; 嵌入服务故障时降级为空向量而不是丢弃整条写入."""
+        if self.retriever.embedder is None or not chunks:
+            return [], DEGRADED_NONE
+        try:
+            return self.retriever.embed_new([chunk.text for chunk in chunks]), DEGRADED_NONE
+        except CodingMemoryError:
+            observe_count("dmsa.write.embedding_degraded", len(chunks))
+            return [], DEGRADED_EMBEDDING
 
     def _publish_vectors(
         self,
@@ -124,12 +142,16 @@ class WriteService:
         request_id: str,
         chunks: Sequence[Chunk],
         vectors: list[tuple[float, ...]],
-    ) -> None:
-        """在提交前发布向量, 避免远端写阻塞数据库事务."""
+    ) -> bool:
+        """在提交前发布向量, 避免远端写阻塞数据库事务.
+
+        返回是否发布成功. 远端索引故障时只降级不抛错: 向量仍随本次事务写进
+        SQLite, 事后可由 reindex_vectors 原样重发布, 不需要重新嵌入.
+        """
         index = self.retriever.vector_index
         fingerprint = self.retriever.fingerprint
         if index is None or fingerprint is None:
-            return
+            return True
         ids = [
             self.store.chunk_id(
                 self.store.message_id(scope, request_id, chunk.message_index),
@@ -140,5 +162,7 @@ class WriteService:
         ]
         try:
             index.upsert(scope, fingerprint, ids, vectors)
-        except Exception as exc:
-            raise CodingMemoryError("vector index write failed; memory was not committed") from exc
+        except Exception:
+            observe_count("dmsa.write.vector_index_degraded", len(ids))
+            return False
+        return True

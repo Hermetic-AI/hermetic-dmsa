@@ -126,8 +126,8 @@ def test_http_rejects_nontext_content_parts_without_echo(tmp_path) -> None:
     memory.close()
 
 
-def test_http_auth_non_ascii_config_and_surfaces_provider_failure(tmp_path) -> None:
-    """非 ASCII 配置密钥不触发比较异常, dense provider 故障返回通用 503。"""
+def test_http_auth_non_ascii_config_and_degrades_provider_failure(tmp_path) -> None:
+    """非 ASCII 配置密钥不触发比较异常, dense provider 故障时降级写入而不是丢请求。"""
 
     class BrokenEmbedder:
         dimension = 2
@@ -155,8 +155,11 @@ def test_http_auth_non_ascii_config_and_surfaces_provider_failure(tmp_path) -> N
         },
         headers={"X-Api-Key": "key"},
     )
-    assert response.status_code == 503
+    assert response.status_code == 200
+    assert response.json()["success"] is True
     assert "provider secret" not in response.text
+    # 嵌入故障时写入降级为无向量, 但原文必须已落库并可被稀疏通道检索.
+    assert memory.store.rows("u")
     memory.close()
 
 

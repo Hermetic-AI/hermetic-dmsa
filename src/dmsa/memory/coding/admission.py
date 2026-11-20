@@ -30,6 +30,11 @@ REASON_REDUNDANT = "redundant"
 # 跨作者的近似重复: 判定为待仲裁的分歧, 不再当作噪音拒绝.
 REASON_CONFLICT = "conflict_candidate"
 
+# 降级原因: 稠密通道不可用时写入仍然落库, 只是少了向量.
+DEGRADED_NONE = ""
+DEGRADED_EMBEDDING = "embedding"
+DEGRADED_VECTOR_INDEX = "vector_index"
+
 
 @dataclass(frozen=True)
 class AdmissionDecision:
@@ -54,14 +59,19 @@ class AdmissionDecision:
 
 @dataclass(frozen=True)
 class AdmissionResult:
-    """写入结果: scope revision 与准入判定."""
+    """写入结果: scope revision、准入判定与降级原因."""
 
     revision: int
     decision: AdmissionDecision
+    degraded: str = DEGRADED_NONE
 
     def to_dict(self) -> dict[str, Any]:
         """返回可序列化的写入结果视图."""
-        return {"revision": self.revision, "decision": self.decision.to_dict()}
+        return {
+            "revision": self.revision,
+            "decision": self.decision.to_dict(),
+            "degraded": self.degraded,
+        }
 
 
 def tokenize(text: str) -> frozenset[str]:

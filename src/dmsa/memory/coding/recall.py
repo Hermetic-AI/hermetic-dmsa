@@ -118,23 +118,32 @@ def collect_candidates(
 
 
 def query_vector(embedder: Embedder | None, query: str) -> tuple[float, ...] | None:
-    """计算查询向量; 属于外部调用, 必须在数据库锁之外执行."""
+    """计算查询向量; 属于外部调用, 必须在数据库锁之外执行.
+
+    嵌入服务故障或返回非法向量时返回 None, 让本次检索降级为纯稀疏通道而不是
+    整条请求失败: 稠密缺失只影响排序, 拿不到任何证据影响的是结果. 降级次数计入
+    ``dmsa.search.dense_degraded``, 不是静默的.
+    """
     if embedder is None:
         return None
     query_embedder = getattr(embedder, "embed_query", None)
-    # 只框住外部调用，校验失败不算上游慢。
-    with timed("dmsa.embedding.query.latency"):
-        vector = (
-            tuple(float(value) for value in query_embedder(query))
-            if callable(query_embedder)
-            else embed_batch(embedder, [query])[0]
-        )
-    if (
-        len(vector) != embedder.dimension
-        or not all(math.isfinite(value) for value in vector)
-        or not any(vector)
-    ):
-        raise CodingMemoryValidationError("embedder returned invalid query vector")
+    try:
+        # 只框住外部调用，校验失败不算上游慢。
+        with timed("dmsa.embedding.query.latency"):
+            vector = (
+                tuple(float(value) for value in query_embedder(query))
+                if callable(query_embedder)
+                else embed_batch(embedder, [query])[0]
+            )
+        if (
+            len(vector) != embedder.dimension
+            or not all(math.isfinite(value) for value in vector)
+            or not any(vector)
+        ):
+            raise CodingMemoryValidationError("embedder returned invalid query vector")
+    except Exception:
+        observe_count("dmsa.search.dense_degraded", 1)
+        return None
     return vector
 
 

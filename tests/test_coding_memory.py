@@ -12,6 +12,7 @@ from dmsa.memory.coding.models import (
     CodingMemoryValidationError,
     DenseScopeTooLargeError,
 )
+from dmsa.memory.coding.recall import query_vector
 
 
 def test_scope_isolation_and_source_spans(tmp_path) -> None:
@@ -248,9 +249,13 @@ def test_invalid_embedder_vectors_are_rejected(tmp_path) -> None:
             return [[0.0, 0.0] for _ in texts]
 
     memory = CodingMemory(tmp_path / "memory.db", embedder=BadEmbedder())
-    with pytest.raises(CodingMemoryValidationError):
-        memory.add("r", "u", "s", [SourceMessage("user", "evidence")])
-    assert memory.store.revision("u") == 0
+    # 无效向量既不能被写进库, 也不能进入检索的稠密通道: 两侧都降级.
+    result = memory.add_guarded("r", "u", "s", [SourceMessage("user", "evidence")])
+    assert result.degraded == "embedding"
+    assert memory.store.revision("u") == 1
+    assert memory.store.db.execute("SELECT COUNT(*) FROM vectors").fetchone()[0] == 0
+    assert query_vector(BadEmbedder(), "evidence") is None
+    assert len(memory.search("evidence", "u", 1)) == 1
     memory.close()
 
 

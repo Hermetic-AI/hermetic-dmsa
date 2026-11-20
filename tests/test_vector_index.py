@@ -8,7 +8,6 @@ from types import ModuleType, SimpleNamespace
 import pytest
 
 from dmsa.memory import CodingMemory, SearchPolicy, SourceMessage
-from dmsa.memory.coding.models import CodingMemoryError
 from dmsa.memory.coding.vector_index import QdrantVectorIndex
 
 
@@ -69,17 +68,18 @@ def test_index_upsert_and_dense_search_are_scope_filtered(tmp_path) -> None:
     memory.close()
 
 
-def test_index_failure_does_not_commit_unindexed_sqlite_vector(tmp_path) -> None:
-    """索引 upsert 失败时拒绝发布 SQL 记忆，避免静默降级。"""
+def test_index_failure_degrades_but_keeps_sqlite_vectors(tmp_path) -> None:
+    """索引 upsert 失败时降级提交: 原文与向量留在 SQLite, 可事后重发布."""
 
     class BrokenIndex(FakeIndex):
         def upsert(self, user_id, fingerprint, ids, vectors) -> None:
             raise OSError("private endpoint detail")
 
     memory = CodingMemory(tmp_path / "memory.db", Embedder(), vector_index=BrokenIndex())
-    with pytest.raises(CodingMemoryError, match="vector index"):
-        memory.add("a", "alice", "s1", [SourceMessage("tool", "evidence")])
-    assert memory.store.rows("alice") == []
+    result = memory.add_guarded("a", "alice", "s1", [SourceMessage("tool", "evidence")])
+    assert result.degraded == "vector_index"
+    assert len(memory.store.rows("alice")) == 1
+    assert memory.store.db.execute("SELECT COUNT(*) FROM vectors").fetchone()[0] == 1
     memory.close()
 
 

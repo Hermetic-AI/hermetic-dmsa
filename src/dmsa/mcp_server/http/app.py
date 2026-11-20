@@ -120,7 +120,7 @@ def create_app(memory: CodingMemory, api_key: str, rsi: IntegratedRSI | None = N
         try:
             request = AddContract.model_validate(payload)
             messages = [validate_message(message) for message in request.messages]
-            memory.add(
+            result = memory.add_guarded(
                 request.request_id,
                 request.user_id,
                 request.session_id,
@@ -139,6 +139,14 @@ def create_app(memory: CodingMemory, api_key: str, rsi: IntegratedRSI | None = N
         except DMSAError as exc:
             _logger.error("add failed", code=exc.code.value, reason=exc.message)
             raise HTTPException(status_code=503, detail="memory request failed") from exc
+        if result.degraded:
+            _logger.warning(
+                "add committed without dense vectors",
+                degraded=result.degraded,
+                request_id=request.request_id,
+                user_id=request.user_id,
+                repo=request.repo,
+            )
         return {
             "success": True,
             "request_id": request.request_id,

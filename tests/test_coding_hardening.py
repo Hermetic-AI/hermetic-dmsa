@@ -10,7 +10,6 @@ import pytest
 
 from dmsa.memory import (
     CodingMemory,
-    CodingMemoryError,
     CodingMemoryValidationError,
     SearchPolicy,
     SourceMessage,
@@ -120,14 +119,14 @@ def test_provider_and_database_errors_are_typed(tmp_path):
             raise RuntimeError("provider secret")
 
     memory = CodingMemory(tmp_path / "errors.db", embedder=BrokenEmbedder())
-    with pytest.raises(CodingMemoryError, match="embedding provider operation failed"):
-        memory.add("r", "u", "s", [SourceMessage("user", "evidence")])
-    assert memory.corpus_state(["u"]).revision == 0
+    degraded = memory.add_guarded("r", "u", "s", [SourceMessage("user", "evidence")])
+    assert degraded.degraded == "embedding"
+    assert memory.corpus_state(["u"]).revision == 1
     with pytest.raises(CodingMemoryValidationError):
         memory.delete_scope("")
+    # 嵌入服务故障时检索降级为纯稀疏通道, 不再让整条请求失败.
+    assert len(memory.search("evidence", "u", 1)) == 1
     memory.close()
-    with pytest.raises(CodingMemoryError):
-        memory.search("evidence", "u", 1)
 
 
 def test_budget_empty_and_invalid_text():

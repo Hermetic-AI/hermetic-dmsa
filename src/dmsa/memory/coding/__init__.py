@@ -1,6 +1,11 @@
 """可追溯 coding 证据记忆。."""
 
-from dmsa.memory.coding.admission import AdmissionDecision, AdmissionResult
+from dmsa.memory.coding.admission import (
+    DEGRADED_EMBEDDING,
+    DEGRADED_VECTOR_INDEX,
+    AdmissionDecision,
+    AdmissionResult,
+)
 from dmsa.memory.coding.budget import estimate_tokens
 from dmsa.memory.coding.consolidation_service import ConsolidationReport, TransferReport
 from dmsa.memory.coding.consolidation_store import ConsolidationRecord, TransferRecord
@@ -22,6 +27,7 @@ from dmsa.memory.coding.models import (
 )
 from dmsa.memory.coding.procedure_store import ProcedureMatch
 from dmsa.memory.coding.procedures import Procedure
+from dmsa.memory.coding.reindex import ReindexReport
 from dmsa.memory.coding.teams import ConflictResolution, WriteConflict, team_scope
 from dmsa.memory.coding.temporal import AsOf, TemporalResult
 from dmsa.memory.coding.trust import MemoryStat
@@ -29,6 +35,8 @@ from dmsa.memory.coding.trust_store import apply_verdict, ensure_stats_table
 from dmsa.memory.coding.vector_index import QdrantVectorIndex, VectorIndex
 
 __all__ = [
+    "DEGRADED_EMBEDDING",
+    "DEGRADED_VECTOR_INDEX",
     "AdmissionDecision",
     "AdmissionResult",
     "AsOf",
@@ -53,6 +61,7 @@ __all__ = [
     "RecallExplanation",
     "RecallItem",
     "RecallRound",
+    "ReindexReport",
     "RuleGroup",
     "SearchHit",
     "SearchPolicy",

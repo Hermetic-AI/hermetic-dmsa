@@ -109,6 +109,27 @@ def test_query_vector_metrics_do_not_count_validation_failures() -> None:
     )
 
 
+def test_query_embedding_failure_degrades_search_to_sparse(tmp_path) -> None:
+    """查询向量化故障时检索退化为纯稀疏通道并计数，不返回错误。"""
+
+    class _FullyBrokenEmbedder(_RaisingEmbedder):
+        """查询与文档两侧都故障的替身。"""
+
+        def embed_query(self, query: str) -> tuple[float, ...]:
+            raise TimeoutError("provider down")
+
+    policy = SearchPolicy(dense_weight=1.0)
+
+    memory = CodingMemory(tmp_path / "sparse.sqlite", _FullyBrokenEmbedder(), policy)
+    memory.add("r", "u", "s", [SourceMessage("user", "cache_refresh evidence")])
+    assert len(memory.search("cache_refresh", "u", 5)) == 1
+    degraded = get_registry().count_histogram("dmsa.search.dense_degraded").to_dict()
+    assert degraded["count"] == 1
+    written = get_registry().count_histogram("dmsa.write.embedding_degraded").to_dict()
+    assert written["count"] == 1
+    memory.close()
+
+
 def test_search_metrics_report_latency_and_delivered_items(tmp_path) -> None:
     """检索主流程报告端到端延迟与实际交付条数。"""
     memory = CodingMemory(

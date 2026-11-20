@@ -82,7 +82,8 @@ policy 可用于配对检索，不会修改实例默认策略。`delete_scope(us
 `dense_scan_limit` 时默认 SQLite dense 检索拒绝运行。可选 `VectorIndex` 实现通过
 scope/fingerprint 过滤召回向量候选；`QdrantVectorIndex(url, timeout=5, api_key=None)` 需
 安装 `hermetic-dmsa[vector]`。Qdrant 候选经 SQLite 再次验证 scope。细节与适用边界见
-`docs/algorithms/coding-memory.md`。
+`docs/algorithms/coding-memory.md`。查询向量化失败（上游故障或返回非法向量）时，本次检索
+降级为纯稀疏通道并返回结果，不抛错也不返回 5xx，降级计入 `dmsa.search.dense_degraded`。
 `add(...)`、`search(...)`、`delete_scope(...)` 与 `save_repo_snapshot(...)` 都接受可选的
 `repo` 关键字参数；`dmsa.memory.scope_key(user_id, repo)` 返回实际分区键（`repo` 为空时即
 `user_id`，否则为 `user#repo`）。分隔符 `#` 不允许出现在 `user_id` 或 `repo` 中，否则
@@ -126,12 +127,24 @@ schema migration，旧数据库可直接打开，分词器为 `unicode61` 的历
 ### 写入门控与遗忘
 
 `CodingMemory.add_guarded(request_id, user_id, session_id, messages, policy=None, repo="",
-author="")` 返回 `AdmissionResult(revision, decision)`；`AdmissionDecision` 带 `admitted` /
-`reason` / `novelty` / `duplicate_of` / `rival_author`。判定原因只有 `novel`（正常写入）、
+author="")` 返回 `AdmissionResult(revision, decision, degraded="")`；`AdmissionDecision` 带
+`admitted` / `reason` / `novelty` / `duplicate_of` / `rival_author`。判定原因只有 `novel`（正常写入）、
 `idempotent`（幂等重试，返回原 revision）、`empty_content`（拒绝）、
 `redundant`（同作者近似重复，拒绝）与 `conflict_candidate`（跨作者近似重复，保留并登记
 写冲突）。`CodingMemory.add(...)` 语义不变，仍返回 scope revision。门控阈值由
 `SearchPolicy.admission_similarity`（默认 `0.95`，范围 `[0, 1]`）给出。
+
+`degraded` 记录稠密通道的降级原因，只有三个取值：`""`（未降级）、`"embedding"`（嵌入服务
+故障或返回非法向量）与 `"vector_index"`（远端索引写入失败）。降级时写入仍然提交：原文、切片、
+倒排词项与 FTS 全部落库，稀疏通道立即可用；`"embedding"` 降级不写向量行，`"vector_index"`
+降级仍把向量写进 SQLite，只缺远端索引的点。两种缺口都由
+`CodingMemory.reindex_vectors(user_id, repo="", *, max_chunks=0, embed_batch=64,
+publish_batch=256)` 事后修复，返回 `ReindexReport(scope, fingerprint, embedded, published,
+pending, aborted)`：先补齐当前 fingerprint 下缺向量的切片（待补算集合由 `chunks LEFT JOIN
+vectors` 直接算出，没有额外的队列表），再把 SQLite 里已有的向量原样重发布到远端索引。
+重发布不调用嵌入模型，因此清空远端索引后可以低成本重建。两个阶段都幂等，中断后重跑安全；
+上游仍故障时不抛错，而是把 `"embedding"` 或 `"vector_index"` 写进 `aborted`，已完成的进度
+保留。`max_chunks=0` 表示补到没有缺口为止。
 
 `dmsa.memory.MemoryGovernance` 提供治理动作，绑定在 `CodingMemory.governance` 上：
 `record_exposure(user_id, chunk_ids, repo="")` 记账曝光、`trust_report(user_id, repo="")`
@@ -353,3 +366,10 @@ competition scale is claimed.
 `dmsa.vector_index.latency`、`dmsa.vector_index.returned`。健康检查只计数、不进延迟直方图，
 否则探针流量会淹没真实请求的延迟分布；`dmsa.search.returned` 直接对应平台写死的 `top_k`
 交付契约，比排序质量更该先被看见。
+
+降级埋点（均为 `observe_count` 形态，导出在 `histograms` 里）：写入侧 `dmsa.write.embedding_degraded`（按切片数计，嵌入故障导致的无向量落库）与
+`dmsa.write.vector_index_degraded`（按切片数计，远端索引写入失败）；检索侧
+`dmsa.search.dense_degraded`（按查询次数计，查询向量化失败导致本次检索退化为纯稀疏通道）；
+补算侧 `dmsa.reindex.embedded` / `dmsa.reindex.published` 与失败计数
+`dmsa.reindex.embedding_failed` / `dmsa.reindex.publish_failed`。这些计数存在的意义是让降级
+可见：稠密通道缺失只影响排序质量，但如果不计数就与"本来就没有稠密证据"无法区分。
