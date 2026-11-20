@@ -32,6 +32,9 @@ jobs:
         run: mkdocs build --strict
       - name: Setup Pages
         uses: actions/configure-pages@v5
+        with:
+          # 仓库尚未启用 Pages 时由本步骤自动启用, 免去一次手工设置。
+          enablement: true
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
