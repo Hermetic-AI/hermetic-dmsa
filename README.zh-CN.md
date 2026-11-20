@@ -5,7 +5,7 @@
 **面向 Coding Agent 的溯源记忆层——存下发生过的事，取回当前适用的证据，并离线改进检索策略。**
 
 [![CI](https://github.com/Hermetic-AI/hermetic-dmsa/actions/workflows/ci.yml/badge.svg)](https://github.com/Hermetic-AI/hermetic-dmsa/actions/workflows/ci.yml)
-[![Docs](https://github.com/Hermetic-AI/hermetic-dmsa/actions/workflows/docs.yml/badge.svg)](https://hermetic-ai.github.io/hermetic-dmsa/)
+[![Docs](https://github.com/Hermetic-AI/hermetic-dmsa/actions/workflows/docs.yml/badge.svg)](https://github.com/Hermetic-AI/hermetic-dmsa/actions/workflows/docs.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Python 3.10–3.12](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue.svg)](https://www.python.org/downloads/)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-261230.svg)](https://docs.astral.sh/ruff/)
@@ -178,6 +178,9 @@ advisor 只能在规则生成的候选里做选择，不能改写策略代码。
 | [docs/security-and-data.md](docs/security-and-data.md) | 数据边界、保留策略与信任模型 |
 | [docs/USAGE.md](docs/USAGE.md) | 长篇用户手册 |
 | [docs/paper-mapping.md](docs/paper-mapping.md) | 算法与文献的对应关系 |
+
+同样的内容由 `Docs` 工作流构建成文档站，每次推送到 `main` 都会以
+`mkdocs build --strict` 重新构建。
 
 ## 开发
 

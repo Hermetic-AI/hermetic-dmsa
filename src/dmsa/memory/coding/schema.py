@@ -119,6 +119,12 @@ CREATE TABLE IF NOT EXISTS requests(
 """
     + STATS_SCHEMA
     + """
+            CREATE TABLE IF NOT EXISTS memory_lineage(
+              user_id TEXT NOT NULL, source_id TEXT NOT NULL, target_id TEXT NOT NULL,
+              relation TEXT NOT NULL, created_at INTEGER NOT NULL,
+              PRIMARY KEY(user_id, source_id, target_id, relation));
+            CREATE INDEX IF NOT EXISTS lineage_target
+              ON memory_lineage(user_id, relation, target_id);
             CREATE TABLE IF NOT EXISTS metadata(key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
 )

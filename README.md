@@ -5,7 +5,7 @@
 **A provenance-aware memory layer for coding agents — store what happened, retrieve what applies, and improve the retrieval policy offline.**
 
 [![CI](https://github.com/Hermetic-AI/hermetic-dmsa/actions/workflows/ci.yml/badge.svg)](https://github.com/Hermetic-AI/hermetic-dmsa/actions/workflows/ci.yml)
-[![Docs](https://github.com/Hermetic-AI/hermetic-dmsa/actions/workflows/docs.yml/badge.svg)](https://hermetic-ai.github.io/hermetic-dmsa/)
+[![Docs](https://github.com/Hermetic-AI/hermetic-dmsa/actions/workflows/docs.yml/badge.svg)](https://github.com/Hermetic-AI/hermetic-dmsa/actions/workflows/docs.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Python 3.10–3.12](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue.svg)](https://www.python.org/downloads/)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-261230.svg)](https://docs.astral.sh/ruff/)
@@ -188,6 +188,9 @@ substitute for an official evaluation. Methodology is in
 | [docs/security-and-data.md](docs/security-and-data.md) | Data boundaries, retention, and trust model |
 | [docs/USAGE.md](docs/USAGE.md) | Long-form user manual |
 | [docs/paper-mapping.md](docs/paper-mapping.md) | Algorithm-to-literature mapping |
+
+The same content is published as a documentation site by the `Docs` workflow, which
+builds with `mkdocs build --strict` on every push to `main`.
 
 ## Development
 

@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import sqlite3
 
-from dmsa.memory.coding.episodes import EpisodeCard
+from dmsa.memory.coding.episodes import SUPERSEDED_OUTCOME, EpisodeCard
 from dmsa.memory.coding.ids import chunk_id, message_id
 from dmsa.memory.coding.models import SourceMessage
 from dmsa.memory.coding.schema import scope_token
 
 EPISODE_ROLE = "episode"
+# lineage 边类型是封闭集合; 与 PMD EdgeType 的 DERIVED_FROM 语义对齐, 但这里
+# 存的是 chunk id 而不是 PMD 节点, 保持原文表为唯一事实来源。
+REL_DERIVED_FROM = "DERIVED_FROM"
+REL_SUPERSEDED_BY = "SUPERSEDED_BY"
 
 
 def session_messages(
@@ -86,16 +90,49 @@ def propagate_outcome(
     )
 
 
-def drop_other_episodes(
-    db: sqlite3.Connection, user_id: str, session_id: str, keep_id: str
+def record_derivation(
+    db: sqlite3.Connection,
+    user_id: str,
+    card_id: str,
+    source_ids: tuple[str, ...],
+    created_at: int,
 ) -> None:
-    """删除同一会话里更早的经验卡, 只保留最新一张."""
-    db.execute(
-        "DELETE FROM exact_terms WHERE chunk_id IN ("
-        "SELECT id FROM chunks WHERE user_id=? AND session_id=? AND role=? AND id<>?)",
+    """登记经验卡到本次原文切片的派生边.
+
+    只写元数据, 不复制原文; 派生边是后续"验证强度沿来源回传"的依据.
+    """
+    for source in source_ids:
+        if source == card_id:
+            continue
+        db.execute(
+            "INSERT OR IGNORE INTO memory_lineage VALUES(?,?,?,?,?)",
+            (user_id, card_id, source, REL_DERIVED_FROM, created_at),
+        )
+
+
+def drop_other_episodes(
+    db: sqlite3.Connection,
+    user_id: str,
+    session_id: str,
+    keep_id: str,
+    created_at: int = 0,
+) -> None:
+    """把同一会话更早的经验卡标为 superseded 并登记指向新卡的边.
+
+    不再物理删除: 旧卡仍可由精确词项与 FTS 召回, 检索侧才能识别"最像的那条
+    其实已被取代". 默认策略下 superseded 卡仍被装包阶段过滤, 行为与旧版一致.
+    """
+    rows = db.execute(
+        "SELECT id FROM chunks WHERE user_id=? AND session_id=? AND role=? AND id<>?",
         (user_id, session_id, EPISODE_ROLE, keep_id),
-    )
-    db.execute(
-        "DELETE FROM chunks WHERE user_id=? AND session_id=? AND role=? AND id<>?",
-        (user_id, session_id, EPISODE_ROLE, keep_id),
-    )
+    ).fetchall()
+    for row in rows:
+        old_id = str(row["id"])
+        db.execute(
+            "UPDATE chunks SET outcome=? WHERE user_id=? AND id=?",
+            (SUPERSEDED_OUTCOME, user_id, old_id),
+        )
+        db.execute(
+            "INSERT OR IGNORE INTO memory_lineage VALUES(?,?,?,?,?)",
+            (user_id, old_id, keep_id, REL_SUPERSEDED_BY, created_at),
+        )

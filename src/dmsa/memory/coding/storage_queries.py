@@ -228,6 +228,50 @@ def message_prefixes(
     return {str(row["id"]): str(row["head"]) for row in rows}
 
 
+def lineage_targets(
+    db: sqlite3.Connection,
+    user_id: str,
+    source_ids: tuple[str, ...],
+    relation: str,
+) -> dict[str, tuple[str, ...]]:
+    """按 source_id 批量读取某种 lineage 边的后继."""
+    result: dict[str, list[str]] = {}
+    values = tuple(dict.fromkeys(source_ids))
+    for offset in range(0, len(values), _HASH_QUERY_BATCH):
+        batch = values[offset : offset + _HASH_QUERY_BATCH]
+        placeholders = ",".join("?" for _ in batch)
+        rows = db.execute(
+            f"SELECT source_id, target_id FROM memory_lineage "
+            f"WHERE user_id=? AND relation=? AND source_id IN ({placeholders})",
+            (user_id, relation, *batch),
+        ).fetchall()
+        for row in rows:
+            result.setdefault(str(row["source_id"]), []).append(str(row["target_id"]))
+    return {key: tuple(dict.fromkeys(items)) for key, items in result.items()}
+
+
+def lineage_sources(
+    db: sqlite3.Connection,
+    user_id: str,
+    target_ids: tuple[str, ...],
+    relation: str,
+) -> dict[str, tuple[str, ...]]:
+    """按 target_id 批量读取某种 lineage 边的前驱."""
+    result: dict[str, list[str]] = {}
+    values = tuple(dict.fromkeys(target_ids))
+    for offset in range(0, len(values), _HASH_QUERY_BATCH):
+        batch = values[offset : offset + _HASH_QUERY_BATCH]
+        placeholders = ",".join("?" for _ in batch)
+        rows = db.execute(
+            f"SELECT source_id, target_id FROM memory_lineage "
+            f"WHERE user_id=? AND relation=? AND target_id IN ({placeholders})",
+            (user_id, relation, *batch),
+        ).fetchall()
+        for row in rows:
+            result.setdefault(str(row["target_id"]), []).append(str(row["source_id"]))
+    return {key: tuple(dict.fromkeys(items)) for key, items in result.items()}
+
+
 def neighbors(
     db: sqlite3.Connection, user_id: str, chunk_id: str, window: int
 ) -> list[sqlite3.Row]:

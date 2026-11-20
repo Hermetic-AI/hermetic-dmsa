@@ -119,6 +119,10 @@ class SearchPolicy:
     # 证据质量调分相对通道 RRF 分数的比例: 调分项量级比通道排名差大一个数量级,
     # 不加限制时会整体压过通道排名, 使不同查询排出几乎相同的结果。
     adjustment_weight: float = 0.25
+    # lineage 通道默认关闭: 开启后 superseded 卡仍可被召回但会被降权并带标记。
+    lineage_window: int = 0
+    # 锚点作用域的验证强度先验默认关闭; 只调分, 不创建新候选。
+    verification_weight: float = 0.0
 
     def __post_init__(self) -> None:
         """拒绝非有限权重、布尔整数和无界策略值."""
@@ -130,6 +134,7 @@ class SearchPolicy:
             self.trust_weight,
             self.admission_similarity,
             self.adjustment_weight,
+            self.verification_weight,
         ):
             if isinstance(value, bool) or not isinstance(value, (float, int)):
                 raise CodingMemoryValidationError("policy weights must be finite numbers")
@@ -149,6 +154,8 @@ class SearchPolicy:
             raise CodingMemoryValidationError("stale_penalty must be in [0, 1]")
         if not 0 <= self.adjustment_weight <= 10:
             raise CodingMemoryValidationError("adjustment_weight must be in [0, 10]")
+        if not 0 <= self.verification_weight <= 1:
+            raise CodingMemoryValidationError("verification_weight must be in [0, 1]")
         if any(
             type(value) is not int or not lower <= value <= upper
             for value, lower, upper in (
@@ -156,6 +163,7 @@ class SearchPolicy:
                 (self.chunk_overlap, 0, 2000),
                 (self.skeleton_depth, 0, 40),
                 (self.relation_window, 0, 20),
+                (self.lineage_window, 0, 3),
             )
         ):
             raise CodingMemoryValidationError("policy integer outside allowed bounds")

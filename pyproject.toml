@@ -90,7 +90,7 @@ vector = [
 [project.urls]
 Homepage = "https://github.com/Hermetic-AI/hermetic-dmsa"
 Repository = "https://github.com/Hermetic-AI/hermetic-dmsa"
-Documentation = "https://hermetic-ai.github.io/hermetic-dmsa/"
+Documentation = "https://github.com/Hermetic-AI/hermetic-dmsa/tree/main/docs"
 Issues = "https://github.com/Hermetic-AI/hermetic-dmsa/issues"
 Changelog = "https://github.com/Hermetic-AI/hermetic-dmsa/blob/main/CHANGELOG.md"
 

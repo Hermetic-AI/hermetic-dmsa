@@ -11,6 +11,7 @@ from dmsa.memory.coding.episode_store import (
     drop_other_episodes,
     insert_episode,
     propagate_outcome,
+    record_derivation,
     session_messages,
 )
 from dmsa.memory.coding.episodes import build_episode
@@ -149,7 +150,8 @@ def publish_request(
         register_conflict(db, user_id, author, tuple(written), rival[0], rival[1])
     if episode is not None:
         episode_id = insert_episode(db, user_id, request_id, session_id, len(messages), episode)
-        drop_other_episodes(db, user_id, session_id, episode_id)
+        record_derivation(db, user_id, episode_id, tuple(cid for cid, _ in written), created_at)
+        drop_other_episodes(db, user_id, session_id, episode_id, created_at)
         if episode.outcome == "reported_success":
             propagate_outcome(db, user_id, session_id, episode.patch_path)
     return revision

@@ -24,6 +24,8 @@ from dmsa.memory.coding.snapshot_store import load_snapshot, save_snapshot
 from dmsa.memory.coding.storage_queries import (
     cached_vectors,
     exact_candidates,
+    lineage_sources,
+    lineage_targets,
     message_prefixes,
     neighbors,
     scope_partitions,
@@ -197,6 +199,18 @@ class CodingStore:
             )
         )
 
+    def lineage_targets(
+        self, user_id: str, ids: tuple[str, ...], relation: str
+    ) -> dict[str, tuple[str, ...]]:
+        """读取这些切片的 lineage 后继."""
+        return lineage_targets(self.db, user_id, ids, relation)
+
+    def lineage_sources(
+        self, user_id: str, ids: tuple[str, ...], relation: str
+    ) -> dict[str, tuple[str, ...]]:
+        """读取这些切片的 lineage 前驱."""
+        return lineage_sources(self.db, user_id, ids, relation)
+
     def rows(self, user_id: str) -> list[sqlite3.Row]:
         """读取指定 scope 的切片, 供诊断与测试使用."""
         return list(
@@ -274,6 +288,7 @@ class CodingStore:
                 "exact_terms",
                 "code_anchors",
                 "code_relations",
+                "memory_lineage",
                 "repo_snapshots",
                 "procedures",
                 "procedure_terms",
