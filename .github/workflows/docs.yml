@@ -11,6 +11,10 @@ permissions:
   pages: write
   id-token: write
 
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
 jobs:
   build:
     name: Build docs
@@ -26,11 +30,12 @@ jobs:
         run: pip install -e ".[docs,dev]"
       - name: Build mkdocs
         run: mkdocs build --strict
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          name: github-pages
-          path: site/
+          path: site
 
   deploy:
     name: Deploy to GitHub Pages
@@ -41,9 +46,5 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: github-pages
-          path: site
       - id: deployment
         uses: actions/deploy-pages@v4
