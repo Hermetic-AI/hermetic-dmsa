@@ -17,6 +17,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   explicit test anchors whose paths overlap the evidence paths affect ranking.
 - `superseded_evidence` and `overclaimed_verification` diagnoses now generate
   bounded RSI policy proposals.
+- Two deterministic benchmark entry points: `lineage_ablation` (does the
+  supersession marker reach the agent?) and `lineage_replay` (paired replay under
+  `offline-rsi-gate-v2`, reporting retrieval quality separately from
+  supersession visibility).
+
+### Documentation
+
+- Clarified that lineage is a transparency channel, not a ranking improvement:
+  paired replay shows equal recall/NDCG in both arms, so the fixed gate rejects
+  automatic activation by design. The channel must be enabled explicitly unless
+  the gate is extended with a visibility dimension.
 
 ## [0.2.0] — Unreleased
 

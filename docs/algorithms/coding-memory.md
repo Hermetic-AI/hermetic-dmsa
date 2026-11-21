@@ -188,7 +188,25 @@ ABA 指纹。`save_repo_snapshot(user_id, root, repo=...)` 写入与检索相同
 
 `SearchPolicy.lineage_window`（默认 `0`，范围 `[0, 3]`）控制这条通道：为 `0` 时行为与旧版完全一致——装包阶段照常过滤 `superseded` 卡；大于 `0` 时旧卡可以进入结果、带 `[superseded by ...]` 标记并降权（幅度 `2 × adjustment_weight × 0.01`，与 RRF 相邻名次差同量级）。由于新旧卡文本高度相似，旧卡常被近重过滤压掉，因此**新卡同时带 `[supersedes ...]` 标记**，保证"这条经验已有更新版本"能真正送到 Agent。降权只发生在已有候选上，不创建候选、不覆盖通道 RRF。
 
-`SearchPolicy.verification_weight`（默认 `0`，范围 `[0, 1]`）控制验证强度先验：只在候选切片或其派生卡存在 `test` 锚点、且锚点路径与证据路径**显式重合**时加成；`pytest ... passed` 这类自述验证不构成锚点，测试通过也不推断它覆盖了整个补丁。两种先验都只能通过离线 RSI 的配对回放晋升：`superseded_evidence` 提案打开 lineage 通道，`overclaimed_verification` 提案提高验证权重；服务不会自行激活。
+`SearchPolicy.verification_weight`（默认 `0`，范围 `[0, 1]`）控制验证强度先验：只在候选切片或其派生卡存在 `test` 锚点、且锚点路径与证据路径**显式重合**时加成；`pytest ... passed` 这类自述验证不构成锚点，测试通过也不推断它覆盖了整个补丁。`superseded_evidence` 诊断提案打开 lineage 通道，`overclaimed_verification` 提案提高验证权重，两者都只能由离线 RSI 提案器给出；服务不会自行激活。
+
+**但"能提案"不等于"能被门禁晋升"。** 实测配对回放（自建合成语料，非官方成绩）：
+
+| 指标 | 默认（`lineage_window=0`） | lineage（`=1`） |
+|---|---:|---:|
+| 平均 recall | 1.00 | 1.00 |
+| 平均 NDCG | 1.00 | 1.00 |
+| 取代信息送达率 | 0.00 | 1.00 |
+| `offline-rsi-gate-v2` | — | **拒绝** |
+
+固定门禁只认 recall / NDCG / token，要求至少一例严格改善；lineage 不制造新的相关命中，只是在已有候选上标注"这条已被取代"，因此两臂检索质量相同，门禁按设计拒绝自动激活。这是正确的行为，不是缺陷：**lineage 是透明度通道，不是排序优化通道**，它应由调用方按场景显式打开（例如需要审计"结论是否已被推翻"的调试会话），而不是靠只认排序指标的门禁自动上位。若将来要让它自动晋升，必须先扩展门禁维度（把"取代信息送达率"纳入接受条件），并重新标定。
+
+复现：
+
+```bash
+python -m benchmarks.coding.lineage_ablation --out benchmarks/results/lineage.json
+python -m benchmarks.coding.lineage_replay --out benchmarks/results/lineage-replay.json
+```
 
 边界：这是"派生层 lineage"，不是完整 PMD DAG——`MemoryLayer` 与 `CodingMemory` 仍未共享记忆；边只表达"由谁派生"和"被谁取代"，不表达调用图、数据流或跨文件依赖；近重过滤仍可能在端到端检索中压掉旧卡，所以 `[supersedes]` 标记比 `[superseded]` 更可靠。
 

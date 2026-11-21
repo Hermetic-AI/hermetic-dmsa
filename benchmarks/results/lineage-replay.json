@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "evaluation_type": "synthetic_proxy_not_official",
+  "official_score": null,
+  "cases": 2,
+  "gate_version": "offline-rsi-gate-v2",
+  "gate_passed": false,
+  "retrieval_quality": {
+    "default": {
+      "mean_recall": 1.0,
+      "mean_ndcg": 1.0
+    },
+    "lineage": {
+      "mean_recall": 1.0,
+      "mean_ndcg": 1.0
+    },
+    "report_hash": "8c3bfa4e1862f5d94f169ef888c2fa6e7d4aeaed3e2debedd6f0a34e6cce9ba6"
+  },
+  "supersession_visibility": {
+    "default": 0.0,
+    "lineage": 1.0
+  },
+  "verdict": "lineage 未改善 recall/NDCG, 门禁按设计拒绝自动激活; 其价值在取代信息送达率, 应由调用方显式开启"
+}

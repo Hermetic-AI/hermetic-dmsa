@@ -1,0 +1,18 @@
+{
+  "cards": 2,
+  "superseded_cards": 1,
+  "arms": {
+    "default": {
+      "hits": 3,
+      "supersedes_marker": 0,
+      "superseded_marker": 0,
+      "superseded_outcome": 0
+    },
+    "lineage": {
+      "hits": 3,
+      "supersedes_marker": 1,
+      "superseded_marker": 0,
+      "superseded_outcome": 0
+    }
+  }
+}
